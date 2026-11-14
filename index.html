@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>屏東縣全縣圖根點與控制點地理資訊查詢系統</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top GIS Toolbar -->
+    <header class="topbar">
+      <div class="topbar-brand">
+        <button id="btn-toggle-sidebar" class="icon-btn" type="button" aria-label="切換側邊欄" title="切換側邊查詢面板">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <div class="brand-title-group">
+          <div class="brand-badge">PT-GIS</div>
+          <div>
+            <h1>屏東縣全縣圖根點與控制點查詢系統</h1>
+            <p class="brand-subtitle">Pingtung County Control Points &amp; Cadastral Reference GIS</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar-controls">
+        <!-- Coordinate System Switcher -->
+        <div class="crs-switcher" role="group" aria-label="座標系統選擇">
+          <span class="crs-label">座標系統</span>
+          <select id="crs-select" aria-label="選擇顯示與查詢座標系統">
+            <option value="EPSG:3824" selected>TWD97 經緯度 (EPSG:3824)</option>
+            <option value="EPSG:4326">WGS84 經緯度 (EPSG:4326)</option>
+            <option value="EPSG:3826">TWD97 TM2 121° (EPSG:3826)</option>
+          </select>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="btn-coord-locate" class="tool-btn" type="button" title="輸入座標定位與環域查詢">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+            <span>座標定位</span>
+          </button>
+          <button id="btn-measure" class="tool-btn" type="button" title="在地圖上量測距離">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>
+            <span>測距</span>
+          </button>
+          <button id="btn-import" class="tool-btn" type="button" title="匯入國土測繪中心或地政處 CSV/GeoJSON 控制點資料">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>匯入圖資</span>
+          </button>
+          <button id="btn-export" class="tool-btn" type="button" title="匯出目前篩選控制點 (CSV/GeoJSON)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>匯出</span>
+          </button>
+          <button id="btn-sources" class="tool-btn tool-btn-accent" type="button" title="官方資料來源與介接說明">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>資料來源</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main GIS Workspace -->
+    <div class="workspace">
+      <!-- Left Collapsible Sidebar -->
+      <aside id="sidebar" class="sidebar" aria-label="圖層與控制點查詢面板">
+        <div class="sidebar-tabs" role="tablist">
+          <button class="tab-btn active" role="tab" aria-selected="true" data-tab="query">控制點查詢</button>
+          <button class="tab-btn" role="tab" aria-selected="false" data-tab="layers">底圖與圖層</button>
+          <button class="tab-btn" role="tab" aria-selected="false" data-tab="stats">統計總覽</button>
+        </div>
+
+        <!-- Tab 1: Query & Filter -->
+        <div id="tab-query" class="tab-panel active">
+          <div class="panel-section">
+            <label class="field-label" for="search-input">關鍵字檢索（點號／點名／地段）</label>
+            <div class="search-box">
+              <input id="search-input" type="search" placeholder="例如：PT01、屏東、鵝鑾鼻、萬丹..." />
+              <button id="btn-clear-filters" class="btn-link" type="button">重設</button>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <span class="field-label">控制點等級（一至四等分色顯示）</span>
+            <div class="order-filters" id="order-filters">
+              <label class="order-chip">
+                <input type="checkbox" value="1" checked />
+                <span class="dot dot-1"></span>
+                <span>一等控制點</span>
+                <span class="chip-count" id="count-order-1">0</span>
+              </label>
+              <label class="order-chip">
+                <input type="checkbox" value="2" checked />
+                <span class="dot dot-2"></span>
+                <span>二等控制點</span>
+                <span class="chip-count" id="count-order-2">0</span>
+              </label>
+              <label class="order-chip">
+                <input type="checkbox" value="3" checked />
+                <span class="dot dot-3"></span>
+                <span>三等控制點</span>
+                <span class="chip-count" id="count-order-3">0</span>
+              </label>
+              <label class="order-chip">
+                <input type="checkbox" value="4" checked />
+                <span class="dot dot-4"></span>
+                <span>四等／圖根點</span>
+                <span class="chip-count" id="count-order-4">0</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel-section grid-2">
+            <div>
+              <label class="field-label" for="office-select">地政事務所轄區</label>
+              <select id="office-select">
+                <option value="all">全縣（6所33鄉鎮市）</option>
+                <option value="屏東地政事務所">屏東地政事務所</option>
+                <option value="潮州地政事務所">潮州地政事務所</option>
+                <option value="東港地政事務所">東港地政事務所</option>
+                <option value="恆春地政事務所">恆春地政事務所</option>
+                <option value="里港地政事務所">里港地政事務所</option>
+                <option value="枋寮地政事務所">枋寮地政事務所</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="township-select">鄉鎮市區</label>
+              <select id="township-select">
+                <option value="all">全部鄉鎮市</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="panel-section grid-2">
+            <div>
+              <label class="field-label" for="status-select">點位狀態</label>
+              <select id="status-select">
+                <option value="all">全部狀態</option>
+                <option value="正常">正常可用</option>
+                <option value="待複測">待複測</option>
+                <option value="遺失">遺失／毀損</option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label" for="radius-select">環域半徑查詢</label>
+              <select id="radius-select">
+                <option value="0">不限（全範圍）</option>
+                <option value="1000">方圓 1 公里</option>
+                <option value="3000">方圓 3 公里</option>
+                <option value="5000">方圓 5 公里</option>
+                <option value="10000">方圓 10 公里</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="list-header">
+            <span>查詢結果：<strong id="result-count">0</strong> 筆</span>
+            <span class="list-hint" id="radius-status">點擊地圖可設定環域中心</span>
+          </div>
+
+          <div id="point-list" class="point-list" role="list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Tab 2: Basemap & Overlay Layers -->
+        <div id="tab-layers" class="tab-panel">
+          <div class="panel-section">
+            <h2 class="section-title">政府開放電子地圖底圖 (NLSC WMTS)</h2>
+            <p class="section-desc">介接內政部國土測繪中心「國土測繪圖資服務雲」公開 WMTS 圖磚服務。</p>
+            <div class="basemap-list" id="basemap-list">
+              <label class="basemap-option">
+                <input type="radio" name="basemap" value="EMAP" checked />
+                <div>
+                  <strong>臺灣通用電子地圖 (EMAP)</strong>
+                  <small>內政部國土測繪中心・標準電子底圖</small>
+                </div>
+              </label>
+              <label class="basemap-option">
+                <input type="radio" name="basemap" value="PHOTO2" />
+                <div>
+                  <strong>臺灣通用正射影像圖 (PHOTO2)</strong>
+                  <small>內政部國土測繪中心・高解析航照影像</small>
+                </div>
+              </label>
+              <label class="basemap-option">
+                <input type="radio" name="basemap" value="B5000" />
+                <div>
+                  <strong>1/5000 基本地形圖 (B5000)</strong>
+                  <small>內政部國土測繪中心・大比例尺地形圖</small>
+                </div>
+              </label>
+              <label class="basemap-option">
+                <input type="radio" name="basemap" value="LUIMAP" />
+                <div>
+                  <strong>國土利用現況圖 (LUIMAP)</strong>
+                  <small>內政部國土測繪中心・土地利用分類</small>
+                </div>
+              </label>
+              <label class="basemap-option">
+                <input type="radio" name="basemap" value="OSM" />
+                <div>
+                  <strong>OpenStreetMap 開放街圖</strong>
+                  <small>國際開放街道圖（離線/備援參考）</small>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <h2 class="section-title">套疊圖層 (Overlays)</h2>
+            <label class="toggle-row">
+              <input type="checkbox" id="overlay-emap2" />
+              <span>通用電子地圖透明路網 (EMAP2)</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="overlay-townships" checked />
+              <span>屏東縣 33 鄉鎮市行政區中心與轄區標註</span>
+            </label>
+            <label class="toggle-row">
+              <input type="checkbox" id="overlay-labels" checked />
+              <span>地圖顯示控制點點號標籤</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Tab 3: Statistics -->
+        <div id="tab-stats" class="tab-panel">
+          <div class="panel-section">
+            <h2 class="section-title">屏東縣控制點分布統計</h2>
+            <div id="stats-cards" class="stats-grid"></div>
+          </div>
+          <div class="panel-section">
+            <h2 class="section-title">各地政事務所轄區統計</h2>
+            <div id="office-stats" class="office-stats-list"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Map Container -->
+      <main class="map-stage">
+        <div id="map" class="map-canvas"></div>
+
+        <!-- Floating Legend -->
+        <div class="map-legend" aria-label="控制點等級圖例">
+          <div class="legend-title">控制點等級圖例</div>
+          <div class="legend-item"><span class="symbol symbol-1">▲</span> 一等控制點（國家基本）</div>
+          <div class="legend-item"><span class="symbol symbol-2">◆</span> 二等控制點（衛星/精密）</div>
+          <div class="legend-item"><span class="symbol symbol-3">■</span> 三等控制點（加密控制）</div>
+          <div class="legend-item"><span class="symbol symbol-4">●</span> 四等控制點／圖根點</div>
+        </div>
+
+        <!-- Active Tool Banner (Measure / Radius) -->
+        <div id="tool-banner" class="tool-banner hidden">
+          <span id="tool-banner-text"></span>
+          <button id="btn-cancel-tool" type="button" class="btn-small">結束</button>
+        </div>
+
+        <!-- Bottom Coordinate Status Bar -->
+        <div class="statusbar">
+          <div class="status-left">
+            <span class="status-pill" id="status-crs-badge">EPSG:3824 (TWD97)</span>
+            <span id="cursor-coords" class="mono">移動滑鼠檢視即時座標...</span>
+          </div>
+          <div class="status-right">
+            <span id="data-source-badge" class="source-pill">示範資料＋支援官方 CSV/GeoJSON 匯入</span>
+            <span id="zoom-level" class="mono">Z: 10</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Dialog: Point Detail (點之記) -->
+  <dialog id="dialog-detail" class="gis-dialog">
+    <div class="dialog-header">
+      <div>
+        <span id="detail-order-badge" class="order-badge"></span>
+        <h2 id="detail-title">控制點詳細資訊</h2>
+      </div>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-detail" aria-label="關閉">✕</button>
+    </div>
+    <div id="detail-body" class="dialog-body"></div>
+    <div class="dialog-footer">
+      <button id="btn-copy-coord" type="button" class="btn-secondary">複製目前座標</button>
+      <button id="btn-zoom-point" type="button" class="btn-primary">縮放至點位</button>
+    </div>
+  </dialog>
+
+  <!-- Dialog: Coordinate Locator & Converter -->
+  <dialog id="dialog-locate" class="gis-dialog">
+    <div class="dialog-header">
+      <h2>座標定位與轉換查詢</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-locate" aria-label="關閉">✕</button>
+    </div>
+    <div class="dialog-body">
+      <p class="dialog-desc">輸入已知座標，系統將自動定位至地圖並搜尋鄰近控制點。</p>
+      <div class="form-group">
+        <label for="locate-crs">輸入座標系統</label>
+        <select id="locate-crs">
+          <option value="EPSG:3824">TWD97 經緯度 (EPSG:3824)</option>
+          <option value="EPSG:4326">WGS84 經緯度 (EPSG:4326)</option>
+          <option value="EPSG:3826">TWD97 TM2 121° (EPSG:3826)</option>
+        </select>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label id="locate-x-label" for="locate-x">經度 (Longitude, °)</label>
+          <input id="locate-x" type="number" step="any" value="120.4879" />
+        </div>
+        <div class="form-group">
+          <label id="locate-y-label" for="locate-y">緯度 (Latitude, °)</label>
+          <input id="locate-y" type="number" step="any" value="22.6761" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="locate-radius">同時篩選周邊控制點半徑</label>
+        <select id="locate-radius">
+          <option value="0">僅定位（不篩選）</option>
+          <option value="1000">1 公里內</option>
+          <option value="3000" selected>3 公里內</option>
+          <option value="5000">5 公里內</option>
+        </select>
+      </div>
+      <div id="locate-converted" class="converted-preview mono"></div>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn-secondary" data-close-dialog="dialog-locate">取消</button>
+      <button id="btn-do-locate" type="button" class="btn-primary">定位並查詢</button>
+    </div>
+  </dialog>
+
+  <!-- Dialog: Import Official Data -->
+  <dialog id="dialog-import" class="gis-dialog">
+    <div class="dialog-header">
+      <h2>匯入控制點資料 (CSV / GeoJSON)</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-import" aria-label="關閉">✕</button>
+    </div>
+    <div class="dialog-body">
+      <p class="dialog-desc">
+        可將向「內政部國土測繪中心」或「屏東縣政府地政處／各地政事務所」取得之控制點成果檔案（CSV 或 GeoJSON）直接匯入本系統套疊顯示。
+      </p>
+      <div class="form-group">
+        <label for="import-crs">檔案座標系統</label>
+        <select id="import-crs">
+          <option value="EPSG:3824">TWD97 經緯度 (EPSG:3824)</option>
+          <option value="EPSG:4326">WGS84 經緯度 (EPSG:4326)</option>
+          <option value="EPSG:3826">TWD97 TM2 121° (EPSG:3826)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="import-mode">匯入模式</label>
+        <select id="import-mode">
+          <option value="replace">取代現有示範資料</option>
+          <option value="append">附加至現有資料</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="import-file">選擇 CSV 或 GeoJSON 檔案</label>
+        <input id="import-file" type="file" accept=".csv,.geojson,.json" />
+        <small class="help-text">CSV 建議欄位：<code>點號,點名,等級(1-4),X(經度/E),Y(緯度/N),高程,鄉鎮市,地政事務所,狀態</code></small>
+      </div>
+      <div id="import-status" class="import-status"></div>
+    </div>
+    <div class="dialog-footer">
+      <button id="btn-reset-demo" type="button" class="btn-secondary">還原內建全縣資料</button>
+      <button type="button" class="btn-primary" data-close-dialog="dialog-import">完成</button>
+    </div>
+  </dialog>
+
+  <!-- Dialog: Official Data Sources -->
+  <dialog id="dialog-sources" class="gis-dialog">
+    <div class="dialog-header">
+      <h2>官方圖資與控制點資料來源說明</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-sources" aria-label="關閉">✕</button>
+    </div>
+    <div class="dialog-body source-docs">
+      <h3>1. 政府開放電子底圖 (即時串接)</h3>
+      <ul>
+        <li><strong>內政部國土測繪中心「國土測繪圖資服務雲」WMTS</strong>：本系統直接介接 <code>https://wmts.nlsc.gov.tw/wmts</code>，提供臺灣通用電子地圖 (<code>EMAP</code>)、正射影像圖 (<code>PHOTO2</code>)、1/5000 基本地形圖 (<code>B5000</code>)、國土利用現況圖 (<code>LUIMAP</code>) 與透明路網 (<code>EMAP2</code>)。</li>
+      </ul>
+      <h3>2. 控制點／圖根點官方來源</h3>
+      <ul>
+        <li><strong>內政部國土測繪中心「全國衛星追蹤站暨基本控制點查詢系統」</strong>：<a href="https://track.nlsc.gov.tw" target="_blank" rel="noopener noreferrer">https://track.nlsc.gov.tw</a>（掌管一、二等衛星控制點、水準點、重力點）。</li>
+        <li><strong>屏東縣政府控制點查詢系統（地政處）</strong>：<a href="http://cp.pthg.gov.tw" target="_blank" rel="noopener noreferrer">http://cp.pthg.gov.tw</a>（整合轄內加密控制點與地籍圖根點）。</li>
+        <li><strong>屏東縣六大地政事務所（測量課）</strong>：屏東、潮州、東港、恆春、里港、枋寮地政事務所，負責轄區內三、四等控制點及地籍圖根點成果申請與點之記核發。</li>
+      </ul>
+      <h3>3. 座標系統說明</h3>
+      <ul>
+        <li><strong>TWD97 (EPSG:3824)</strong>：臺灣大地基準 1997 經緯度（GRS80 橢球體）。</li>
+        <li><strong>WGS84 (EPSG:4326)</strong>：全球衛星定位系統經緯度。</li>
+        <li><strong>TWD97 TM2 121° (EPSG:3826)</strong>：臺灣二度分帶平面直角坐標（E, N 公尺）。</li>
+      </ul>
+      <p class="notice-box">
+        <strong>資料聲明：</strong>因政府資安規範，公開平台未提供免登入之即時圖根點批次 API。本系統內建涵蓋屏東縣 33 鄉鎮市之一至四等控制點空間參考資料供 GIS 平台展示與測試，並支援透過右上角「匯入圖資」載入您向官方申請取得之真實 CSV／GeoJSON 控制點成果檔。
+      </p>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn-primary" data-close-dialog="dialog-sources">關閉</button>
+    </div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
