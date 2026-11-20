@@ -1,4 +1,5 @@
 /* global L, proj4, PINGTUNG_OFFICES, TOWNSHIPS, INITIAL_CONTROL_POINTS */
+'use strict';
 
 // 1. 註冊臺灣常用座標系統至 Proj4js
 proj4.defs('EPSG:3824', '+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs +type=crs');
@@ -6,10 +7,17 @@ proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs +type=crs');
 proj4.defs('EPSG:3826', '+proj=tmerc +lat_0=0 +lon_0=121 +k=0.9999 +x_0=250000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs');
 
 const ORDER_META = {
-  1: { label: '一等控制點', color: '#dc2626', shape: 'triangle' },
-  2: { label: '二等控制點', color: '#ea580c', shape: 'diamond' },
-  3: { label: '三等控制點', color: '#2563eb', shape: 'square' },
-  4: { label: '四等／圖根點', color: '#059669', shape: 'circle' }
+  1: { label: '一等控制點', color: '#b91c1c', shape: 'triangle', symbol: '▲' },
+  2: { label: '二等控制點', color: '#c2410c', shape: 'diamond', symbol: '◆' },
+  3: { label: '三等控制點', color: '#1d4ed8', shape: 'square', symbol: '■' },
+  4: { label: '四等／圖根點', color: '#047857', shape: 'circle', symbol: '●' }
+};
+
+// ISO 27001 檔案匯入安全上限
+const SECURITY_LIMITS = {
+  MAX_FILE_BYTES: 5 * 1024 * 1024, // 5 MB
+  MAX_IMPORT_ROWS: 10000,
+  ALLOWED_EXTENSIONS: ['.csv', '.geojson', '.json']
 };
 
 const state = {
@@ -22,12 +30,45 @@ const state = {
   selectedStatus: 'all',
   searchQuery: '',
   radiusMeters: 0,
-  radiusCenter: null, // { lat, lon }
+  radiusCenter: null,
   showLabels: true,
   activePoint: null,
   measureMode: false,
-  measurePoints: []
+  measurePoints: [],
+  tableMode: false,
+  lastFocusedElement: null,
+  auditLogs: []
 };
+
+// ISO 27001 A.8.15 作業安全稽核日誌（僅存於本機記憶體工作階段，不寫入敏感個資）
+function addAuditLog(action, detail) {
+  const ts = new Date().toISOString();
+  const entry = `[${ts}] [${action}] ${detail}`;
+  state.auditLogs.push(entry);
+  if (state.auditLogs.length > 200) state.auditLogs.shift();
+}
+
+// 無障礙：螢幕報讀器即時播報
+function announce(message) {
+  const el = document.getElementById('sr-announcer');
+  if (!el) return;
+  el.textContent = '';
+  window.setTimeout(() => {
+    el.textContent = message;
+  }, 50);
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function flyToSafe(latlng, zoom) {
+  if (prefersReducedMotion()) {
+    map.setView(latlng, zoom, { animate: false });
+  } else {
+    map.flyTo(latlng, zoom, { duration: 0.6 });
+  }
+}
 
 // 2. 初始化 Leaflet 地圖（中心設於屏東縣）
 const map = L.map('map', {
@@ -35,10 +76,10 @@ const map = L.map('map', {
   zoom: 10,
   zoomControl: false
 });
-L.control.zoom({ position: 'topright' }).addTo(map);
+L.control.zoom({ position: 'topright', zoomInTitle: '放大地圖', zoomOutTitle: '縮小地圖' }).addTo(map);
 L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
 
-// 3. 內政部國土測繪中心 WMTS 底圖與 OpenStreetMap 備援
+// 3. 內政部國土測繪中心 HTTPS WMTS 底圖與 OpenStreetMap 備援
 const basemaps = {
   EMAP: L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP/default/GoogleMapsCompatible/{z}/{y}/{x}', {
     maxZoom: 19,
@@ -70,13 +111,12 @@ const overlayEmap2 = L.tileLayer('https://wmts.nlsc.gov.tw/wmts/EMAP2/default/Go
   attribution: '© NLSC EMAP2'
 });
 
-// 圖層群組
 const townshipLayer = L.layerGroup().addTo(map);
 const pointsLayer = L.layerGroup().addTo(map);
 const bufferLayer = L.layerGroup().addTo(map);
 const measureLayer = L.layerGroup().addTo(map);
 
-// 4. 工具函式
+// 4. 安全與座標工具函式
 function escapeHtml(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -84,6 +124,19 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ISO 27001 / OWASP 防範 CSV 公式注入 (Formula Injection)
+function sanitizeCsvCell(value) {
+  let str = String(value ?? '');
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+function isValidWgs84(lon, lat) {
+  return Number.isFinite(lon) && Number.isFinite(lat) && lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90;
 }
 
 function toDMS(deg, isLat) {
@@ -122,8 +175,8 @@ function formatCoordPair(lon, lat, crs = state.currentCrs) {
 
 function createOrderIcon(order, status) {
   const meta = ORDER_META[order] || ORDER_META[4];
-  const opacity = status === '遺失' ? 0.55 : 1;
-  const stroke = status === '遺失' ? '#1e293b' : '#ffffff';
+  const opacity = status === '遺失' ? 0.6 : 1;
+  const stroke = status === '遺失' ? '#0f172a' : '#ffffff';
   let svgShape = '';
 
   if (meta.shape === 'triangle') {
@@ -138,7 +191,7 @@ function createOrderIcon(order, status) {
 
   return L.divIcon({
     className: 'custom-cp-icon',
-    html: `<svg width="24" height="24" viewBox="0 0 24 24" style="opacity:${opacity};filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))">${svgShape}</svg>`,
+    html: `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="opacity:${opacity}">${svgShape}</svg>`,
     iconSize: [24, 24],
     iconAnchor: [12, 12]
   });
@@ -150,12 +203,12 @@ function renderTownshipMarkers() {
   TOWNSHIPS.forEach((tw) => {
     const marker = L.circleMarker([tw.lat, tw.lon], {
       radius: 4,
-      color: '#475569',
+      color: '#334155',
       weight: 1.5,
       fillColor: '#ffffff',
-      fillOpacity: 0.9
+      fillOpacity: 0.95
     });
-    marker.bindTooltip(`${tw.name}`, {
+    marker.bindTooltip(escapeHtml(tw.name), {
       permanent: true,
       direction: 'top',
       offset: [0, -4],
@@ -168,7 +221,7 @@ function renderTownshipMarkers() {
       document.getElementById('township-select').value = tw.name;
       state.selectedTownship = tw.name;
       applyFilters();
-      map.flyTo([tw.lat, tw.lon], 13, { duration: 0.6 });
+      flyToSafe([tw.lat, tw.lon], 13);
     });
     townshipLayer.addLayer(marker);
   });
@@ -200,9 +253,11 @@ function applyFilters() {
 
   renderMapPoints();
   renderPointList();
+  renderAccessibleTable();
   renderBufferCircle();
   updateOrderCounts();
   renderStats();
+  announce(`已更新篩選結果，共 ${state.filteredPoints.length} 筆控制點。`);
 }
 
 function updateOrderCounts() {
@@ -212,16 +267,19 @@ function updateOrderCounts() {
     if (counts[o] !== undefined) counts[o]++;
   });
   [1, 2, 3, 4].forEach((o) => {
-    document.getElementById(`count-order-${o}`).textContent = counts[o];
+    document.getElementById(`count-order-${o}`).textContent = String(counts[o]);
   });
-  document.getElementById('result-count').textContent = state.filteredPoints.length;
+  document.getElementById('result-count').textContent = String(state.filteredPoints.length);
 }
 
 function renderMapPoints() {
   pointsLayer.clearLayers();
   state.filteredPoints.forEach((pt) => {
+    const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
     const marker = L.marker([pt.lat, pt.lon], {
-      icon: createOrderIcon(pt.order, pt.status)
+      icon: createOrderIcon(pt.order, pt.status),
+      title: `${pt.id} ${pt.name}（${orderInfo.label}）`,
+      alt: `${pt.id} ${pt.name}，${orderInfo.label}，位於${pt.township}`
     });
 
     if (state.showLabels) {
@@ -238,23 +296,25 @@ function renderMapPoints() {
   });
 }
 
+// 無障礙：使用原生 <button> 卡片，確保鍵盤 Tab / Enter / Space 完整操作
 function renderPointList() {
   const container = document.getElementById('point-list');
   if (state.filteredPoints.length === 0) {
-    container.innerHTML = '<div class="notice-box" style="margin:8px;">查無符合條件的控制點，請放寬篩選條件或調整環域半徑。</div>';
+    container.innerHTML = '<div class="notice-box notice-spaced" role="status">查無符合條件的控制點，請放寬篩選條件或調整環域半徑。</div>';
     return;
   }
 
   const fragment = document.createDocumentFragment();
   state.filteredPoints.slice(0, 200).forEach((pt) => {
-    const card = document.createElement('div');
+    const card = document.createElement('button');
+    card.type = 'button';
     card.className = `point-card order-${pt.order}`;
-    card.setAttribute('role', 'listitem');
     const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
+    card.setAttribute('aria-label', `${pt.id} ${pt.name}，${orderInfo.label}，${pt.township}${pt.section}，狀態${pt.status}，檢視點之記`);
 
     card.innerHTML = `
       <div class="point-card-top">
-        <span class="point-title">${escapeHtml(pt.id)} · ${escapeHtml(pt.name)}</span>
+        <span class="point-title">${escapeHtml(orderInfo.symbol)} ${escapeHtml(pt.id)} · ${escapeHtml(pt.name)}</span>
         <span class="order-badge order-${pt.order}">${escapeHtml(orderInfo.label)}</span>
       </div>
       <div class="point-meta">
@@ -265,14 +325,53 @@ function renderPointList() {
     `;
 
     card.addEventListener('click', () => {
-      map.flyTo([pt.lat, pt.lon], Math.max(map.getZoom(), 15), { duration: 0.6 });
-      openPointDetail(pt);
+      if (!state.tableMode) {
+        flyToSafe([pt.lat, pt.lon], Math.max(map.getZoom(), 15));
+      }
+      openPointDetail(pt, card);
     });
     fragment.appendChild(card);
   });
 
   container.innerHTML = '';
   container.appendChild(fragment);
+}
+
+// 無障礙：標準語意化資料表替代檢視
+function renderAccessibleTable() {
+  const tbody = document.getElementById('a11y-table-body');
+  const thCoords = document.getElementById('th-coords');
+  if (thCoords) thCoords.textContent = `座標 (${state.currentCrs})`;
+  if (!tbody) return;
+
+  if (state.filteredPoints.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9">查無符合條件的控制點資料。</td></tr>';
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  state.filteredPoints.slice(0, 500).forEach((pt) => {
+    const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <th scope="row" class="mono">${escapeHtml(pt.id)}</th>
+      <td>${escapeHtml(pt.name)}</td>
+      <td><span class="order-badge order-${pt.order}">${escapeHtml(orderInfo.symbol)} ${escapeHtml(orderInfo.label)}</span></td>
+      <td>${escapeHtml(pt.township)}・${escapeHtml(pt.section)}</td>
+      <td>${escapeHtml(pt.office)}</td>
+      <td class="mono">${escapeHtml(formatCoordPair(pt.lon, pt.lat))}</td>
+      <td class="mono">${Number(pt.h).toFixed(2)}</td>
+      <td>${escapeHtml(pt.status)}</td>
+      <td><button type="button" class="btn-table-action">檢視點之記</button></td>
+    `;
+    const btn = tr.querySelector('.btn-table-action');
+    btn.setAttribute('aria-label', `檢視 ${pt.id} ${pt.name} 之點之記詳細資訊`);
+    btn.addEventListener('click', () => openPointDetail(pt, btn));
+    fragment.appendChild(tr);
+  });
+
+  tbody.innerHTML = '';
+  tbody.appendChild(fragment);
 }
 
 function renderBufferCircle() {
@@ -290,7 +389,7 @@ function renderBufferCircle() {
     L.circleMarker([state.radiusCenter.lat, state.radiusCenter.lon], {
       radius: 5,
       color: '#0f766e',
-      fillColor: '#fff',
+      fillColor: '#ffffff',
       fillOpacity: 1
     }).addTo(bufferLayer);
   }
@@ -311,10 +410,10 @@ function renderStats() {
   document.getElementById('stats-cards').innerHTML = `
     <div class="stat-box"><strong>${total}</strong><span>全縣控制點總數</span></div>
     <div class="stat-box"><strong>${normalCount}</strong><span>正常可用點位</span></div>
-    <div class="stat-box"><strong style="color:var(--order-1)">${byOrder[1]}</strong><span>一等控制點</span></div>
-    <div class="stat-box"><strong style="color:var(--order-2)">${byOrder[2]}</strong><span>二等控制點</span></div>
-    <div class="stat-box"><strong style="color:var(--order-3)">${byOrder[3]}</strong><span>三等控制點</span></div>
-    <div class="stat-box"><strong style="color:var(--order-4)">${byOrder[4]}</strong><span>四等／圖根點</span></div>
+    <div class="stat-box"><strong class="text-order-1">${byOrder[1]}</strong><span>一等控制點</span></div>
+    <div class="stat-box"><strong class="text-order-2">${byOrder[2]}</strong><span>二等控制點</span></div>
+    <div class="stat-box"><strong class="text-order-3">${byOrder[3]}</strong><span>三等控制點</span></div>
+    <div class="stat-box"><strong class="text-order-4">${byOrder[4]}</strong><span>四等／圖根點</span></div>
   `;
 
   const maxOffice = Math.max(1, ...Object.values(byOffice));
@@ -322,14 +421,31 @@ function renderStats() {
     .map(([office, count]) => `
       <div class="office-bar-row">
         <div class="office-bar-label"><span>${escapeHtml(office)}</span><strong class="mono">${count}</strong></div>
-        <div class="office-bar-track"><div class="office-bar-fill" style="width:${(count / maxOffice) * 100}%"></div></div>
+        <div class="office-bar-track" role="progressbar" aria-label="${escapeHtml(office)}控制點數" aria-valuenow="${count}" aria-valuemin="0" aria-valuemax="${maxOffice}">
+          <div class="office-bar-fill" style="width:${(count / maxOffice) * 100}%"></div>
+        </div>
       </div>
     `)
     .join('');
 }
 
-// 7. 點位詳細資訊（點之記 Modal）
-function openPointDetail(pt) {
+// 7. 彈出視窗開啟／關閉與無障礙焦點還原
+function openDialog(dialogId, triggerEl) {
+  state.lastFocusedElement = triggerEl || document.activeElement;
+  const dialog = document.getElementById(dialogId);
+  if (dialog && !dialog.open) {
+    dialog.showModal();
+  }
+}
+
+function closeDialog(dialogId) {
+  const dialog = document.getElementById(dialogId);
+  if (dialog && dialog.open) {
+    dialog.close();
+  }
+}
+
+function openPointDetail(pt, triggerEl) {
   state.activePoint = pt;
   const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
   const twd97 = convertFromWgs84(pt.lon, pt.lat, 'EPSG:3824');
@@ -337,25 +453,28 @@ function openPointDetail(pt) {
 
   const badge = document.getElementById('detail-order-badge');
   badge.className = `order-badge order-${pt.order}`;
-  badge.textContent = orderInfo.label;
+  badge.textContent = `${orderInfo.symbol} ${orderInfo.label}`;
 
   document.getElementById('detail-title').textContent = `${pt.id} — ${pt.name}`;
   document.getElementById('detail-body').innerHTML = `
     <table class="detail-table">
-      <tr><th>行政轄區</th><td>${escapeHtml(pt.township)}・${escapeHtml(pt.section)}</td></tr>
-      <tr><th>地政事務所</th><td>${escapeHtml(pt.office)}</td></tr>
-      <tr><th>管理機關</th><td>${escapeHtml(pt.authority)}</td></tr>
-      <tr><th>點位狀態</th><td><strong>${escapeHtml(pt.status)}</strong>（標石類型：${escapeHtml(pt.monument)}）</td></tr>
-      <tr><th>TWD97 (EPSG:3824)</th><td class="mono">${twd97.y.toFixed(6)}°, ${twd97.x.toFixed(6)}°<br><small>${toDMS(twd97.y, true)} / ${toDMS(twd97.x, false)}</small></td></tr>
-      <tr><th>WGS84 (EPSG:4326)</th><td class="mono">${pt.lat.toFixed(6)}°, ${pt.lon.toFixed(6)}°<br><small>${toDMS(pt.lat, true)} / ${toDMS(pt.lon, false)}</small></td></tr>
-      <tr><th>TWD97 TM2 (3826)</th><td class="mono">E: ${tm2.x.toFixed(3)} m, N: ${tm2.y.toFixed(3)} m</td></tr>
-      <tr><th>正高 (H)</th><td class="mono">${Number(pt.h).toFixed(3)} m (TWVD2001)</td></tr>
-      <tr><th>埋設／檢測日期</th><td>${escapeHtml(pt.installDate)}</td></tr>
-      <tr><th>點之記備註</th><td>${escapeHtml(pt.note)}</td></tr>
+      <tbody>
+        <tr><th scope="row">行政轄區</th><td>${escapeHtml(pt.township)}・${escapeHtml(pt.section)}</td></tr>
+        <tr><th scope="row">地政事務所</th><td>${escapeHtml(pt.office)}</td></tr>
+        <tr><th scope="row">管理機關</th><td>${escapeHtml(pt.authority)}</td></tr>
+        <tr><th scope="row">點位狀態</th><td><strong>${escapeHtml(pt.status)}</strong>（標石類型：${escapeHtml(pt.monument)}）</td></tr>
+        <tr><th scope="row">TWD97 (EPSG:3824)</th><td class="mono">${twd97.y.toFixed(6)}°, ${twd97.x.toFixed(6)}°<br><small>${toDMS(twd97.y, true)} / ${toDMS(twd97.x, false)}</small></td></tr>
+        <tr><th scope="row">WGS84 (EPSG:4326)</th><td class="mono">${pt.lat.toFixed(6)}°, ${pt.lon.toFixed(6)}°<br><small>${toDMS(pt.lat, true)} / ${toDMS(pt.lon, false)}</small></td></tr>
+        <tr><th scope="row">TWD97 TM2 (3826)</th><td class="mono">E: ${tm2.x.toFixed(3)} m, N: ${tm2.y.toFixed(3)} m</td></tr>
+        <tr><th scope="row">正高 (H)</th><td class="mono">${Number(pt.h).toFixed(3)} m (TWVD2001)</td></tr>
+        <tr><th scope="row">埋設／檢測日期</th><td>${escapeHtml(pt.installDate)}</td></tr>
+        <tr><th scope="row">點之記備註</th><td>${escapeHtml(pt.note)}</td></tr>
+      </tbody>
     </table>
   `;
 
-  document.getElementById('dialog-detail').showModal();
+  addAuditLog('VIEW_POINT', `檢視控制點 ${pt.id} (${pt.township})`);
+  openDialog('dialog-detail', triggerEl);
 }
 
 // 8. 測距工具
@@ -363,17 +482,23 @@ function startMeasureMode() {
   state.measureMode = true;
   state.measurePoints = [];
   measureLayer.clearLayers();
-  document.getElementById('btn-measure').classList.add('active');
+  const btn = document.getElementById('btn-measure');
+  btn.classList.add('active');
+  btn.setAttribute('aria-pressed', 'true');
   document.getElementById('tool-banner').classList.remove('hidden');
   document.getElementById('tool-banner-text').textContent = '測距模式：請在地圖上依序點擊兩點以上量測距離';
+  announce('已進入地圖測距模式');
 }
 
 function stopMeasureMode() {
   state.measureMode = false;
   state.measurePoints = [];
   measureLayer.clearLayers();
-  document.getElementById('btn-measure').classList.remove('active');
+  const btn = document.getElementById('btn-measure');
+  btn.classList.remove('active');
+  btn.setAttribute('aria-pressed', 'false');
   document.getElementById('tool-banner').classList.add('hidden');
+  announce('已結束地圖測距模式');
 }
 
 function handleMeasureClick(latlng) {
@@ -381,7 +506,7 @@ function handleMeasureClick(latlng) {
   measureLayer.clearLayers();
 
   state.measurePoints.forEach((p) => {
-    L.circleMarker(p, { radius: 5, color: '#0f766e', fillColor: '#fff', fillOpacity: 1 }).addTo(measureLayer);
+    L.circleMarker(p, { radius: 5, color: '#0f766e', fillColor: '#ffffff', fillOpacity: 1 }).addTo(measureLayer);
   });
 
   if (state.measurePoints.length >= 2) {
@@ -395,7 +520,7 @@ function handleMeasureClick(latlng) {
   }
 }
 
-// 9. CSV / GeoJSON 匯入與匯出
+// 9. CSV / GeoJSON 安全匯入與防注入匯出
 function parseCsvLine(line) {
   const result = [];
   let cur = '';
@@ -424,36 +549,51 @@ function handleImportFile(file) {
   const statusEl = document.getElementById('import-status');
   const sourceCrs = document.getElementById('import-crs').value;
   const mode = document.getElementById('import-mode').value;
-  const reader = new FileReader();
 
+  // ISO 27001 輸入安全檢查：副檔名白名單與檔案大小上限
+  const lowerName = file.name.toLowerCase();
+  const hasAllowedExt = SECURITY_LIMITS.ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+  if (!hasAllowedExt) {
+    statusEl.textContent = '安全阻擋：僅允許匯入 .csv、.geojson 或 .json 格式檔案。';
+    addAuditLog('IMPORT_REJECTED', `不允許的檔案格式：${file.name}`);
+    return;
+  }
+  if (file.size > SECURITY_LIMITS.MAX_FILE_BYTES) {
+    statusEl.textContent = '安全阻擋：檔案大小超過 5 MB 上限，請分批匯入。';
+    addAuditLog('IMPORT_REJECTED', `檔案過大 (${file.size} bytes)`);
+    return;
+  }
+
+  const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const raw = String(e.target.result).replace(/^\uFEFF/, '');
       const imported = [];
 
-      if (file.name.toLowerCase().endsWith('.json') || file.name.toLowerCase().endsWith('.geojson')) {
+      if (lowerName.endsWith('.json') || lowerName.endsWith('.geojson')) {
         const gj = JSON.parse(raw);
-        const features = gj.features || [];
+        const features = Array.isArray(gj.features) ? gj.features.slice(0, SECURITY_LIMITS.MAX_IMPORT_ROWS) : [];
         features.forEach((f, idx) => {
-          if (!f.geometry || f.geometry.type !== 'Point') return;
+          if (!f || !f.geometry || f.geometry.type !== 'Point' || !Array.isArray(f.geometry.coordinates)) return;
           const [rawX, rawY] = f.geometry.coordinates;
           const { lon, lat } = convertToWgs84(Number(rawX), Number(rawY), sourceCrs);
+          if (!isValidWgs84(lon, lat)) return;
           const p = f.properties || {};
           imported.push({
-            id: p.id || p['點號'] || `IMP-${idx + 1}`,
-            name: p.name || p['點名'] || `匯入點位-${idx + 1}`,
-            order: Math.min(4, Math.max(1, Number(p.order || p['等級'] || 4))),
-            township: p.township || p['鄉鎮市'] || '屏東縣',
-            office: p.office || p['地政事務所'] || '屏東地政事務所',
-            authority: p.authority || '使用者匯入圖資',
-            section: p.section || p['地段'] || '-',
+            id: String(p.id || p['點號'] || `IMP-${idx + 1}`).slice(0, 40),
+            name: String(p.name || p['點名'] || `匯入點位-${idx + 1}`).slice(0, 80),
+            order: Math.min(4, Math.max(1, Number(p.order || p['等級'] || 4) || 4)),
+            township: String(p.township || p['鄉鎮市'] || '屏東縣').slice(0, 30),
+            office: String(p.office || p['地政事務所'] || '屏東地政事務所').slice(0, 30),
+            authority: String(p.authority || '使用者本機匯入圖資').slice(0, 60),
+            section: String(p.section || p['地段'] || '-').slice(0, 40),
             lat,
             lon,
-            h: Number(p.h || p['高程'] || 0),
-            monument: p.monument || '控制點',
-            status: p.status || p['狀態'] || '正常',
-            installDate: p.installDate || '-',
-            note: p.note || '由 GeoJSON 匯入'
+            h: Number.isFinite(Number(p.h || p['高程'])) ? Number(p.h || p['高程']) : 0,
+            monument: String(p.monument || '控制點').slice(0, 40),
+            status: String(p.status || p['狀態'] || '正常').slice(0, 20),
+            installDate: String(p.installDate || '-').slice(0, 20),
+            note: String(p.note || '由本機 GeoJSON 匯入').slice(0, 200)
           });
         });
       } else {
@@ -474,41 +614,45 @@ function handleImportFile(file) {
 
         if (iX === -1 || iY === -1) throw new Error('找不到 X/經度 或 Y/緯度 欄位');
 
-        for (let r = 1; r < lines.length; r++) {
+        const maxRows = Math.min(lines.length, SECURITY_LIMITS.MAX_IMPORT_ROWS + 1);
+        for (let r = 1; r < maxRows; r++) {
           const cols = parseCsvLine(lines[r]);
           const xVal = parseFloat(cols[iX]);
           const yVal = parseFloat(cols[iY]);
           if (Number.isNaN(xVal) || Number.isNaN(yVal)) continue;
 
           const { lon, lat } = convertToWgs84(xVal, yVal, sourceCrs);
+          if (!isValidWgs84(lon, lat)) continue;
+
           imported.push({
-            id: iId >= 0 ? cols[iId] : `CSV-${r}`,
-            name: iName >= 0 ? cols[iName] : `匯入點-${r}`,
+            id: (iId >= 0 ? cols[iId] : `CSV-${r}`).slice(0, 40),
+            name: (iName >= 0 ? cols[iName] : `匯入點-${r}`).slice(0, 80),
             order: iOrder >= 0 ? Math.min(4, Math.max(1, parseInt(cols[iOrder], 10) || 4)) : 4,
-            township: iTown >= 0 ? cols[iTown] : '屏東縣',
-            office: iOffice >= 0 ? cols[iOffice] : '屏東地政事務所',
-            authority: '使用者匯入圖資',
+            township: (iTown >= 0 ? cols[iTown] : '屏東縣').slice(0, 30),
+            office: (iOffice >= 0 ? cols[iOffice] : '屏東地政事務所').slice(0, 30),
+            authority: '使用者本機匯入圖資',
             section: '-',
             lat,
             lon,
             h: iH >= 0 ? parseFloat(cols[iH]) || 0 : 0,
             monument: '控制點',
-            status: iStatus >= 0 ? cols[iStatus] || '正常' : '正常',
+            status: (iStatus >= 0 ? cols[iStatus] || '正常' : '正常').slice(0, 20),
             installDate: '-',
-            note: '由 CSV 匯入'
+            note: '由本機 CSV 匯入'
           });
         }
       }
 
-      if (imported.length === 0) throw new Error('未解析到有效控制點座標');
+      if (imported.length === 0) throw new Error('未解析到有效且合法範圍內之控制點座標');
       state.points = mode === 'replace' ? imported : [...state.points, ...imported];
-      document.getElementById('data-source-badge').textContent = `已載入匯入圖資（共 ${state.points.length} 點）`;
-      statusEl.textContent = `成功匯入 ${imported.length} 筆控制點！`;
+      document.getElementById('data-source-badge').textContent = `已載入本機圖資（共 ${state.points.length} 點）`;
+      statusEl.textContent = `安全驗證通過，成功於本機匯入 ${imported.length} 筆控制點！`;
+      addAuditLog('IMPORT_OK', `本機匯入 ${imported.length} 筆 (${sourceCrs}, 模式: ${mode})`);
       applyFilters();
-      const first = imported[0];
-      map.flyTo([first.lat, first.lon], 13);
+      flyToSafe([imported[0].lat, imported[0].lon], 13);
     } catch (err) {
       statusEl.textContent = `匯入失敗：${err.message}`;
+      addAuditLog('IMPORT_ERROR', err.message);
     }
   };
   reader.readAsText(file, 'utf-8');
@@ -522,11 +666,11 @@ function exportFilteredCsv() {
     const xStr = crs === 'EPSG:3826' ? x.toFixed(3) : x.toFixed(6);
     const yStr = crs === 'EPSG:3826' ? y.toFixed(3) : y.toFixed(6);
     return [pt.id, pt.name, pt.order, pt.township, pt.office, pt.section, xStr, yStr, pt.h, pt.status]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .map(sanitizeCsvCell)
       .join(',');
   });
 
-  const csvContent = '\uFEFF' + [header.join(','), ...rows].join('\n');
+  const csvContent = '\uFEFF' + [header.map(sanitizeCsvCell).join(','), ...rows].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -534,9 +678,22 @@ function exportFilteredCsv() {
   a.download = `pingtung_control_points_${crs.replace(':', '_')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  addAuditLog('EXPORT_CSV', `匯出 ${state.filteredPoints.length} 筆控制點 (${crs})`);
+  announce(`已匯出 ${state.filteredPoints.length} 筆控制點 CSV 檔案`);
 }
 
-// 10. UI 綁定與事件初始化
+function exportAuditLogFile() {
+  const content = state.auditLogs.join('\n') + '\n';
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `pingtung_gis_audit_log_${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// 10. UI 綁定與無障礙互動初始化
 function populateTownshipSelect() {
   const sel = document.getElementById('township-select');
   const list = state.selectedOffice === 'all'
@@ -584,6 +741,10 @@ function updateLocatePreview() {
   }
   try {
     const { lon, lat } = convertToWgs84(x, y, crs);
+    if (!isValidWgs84(lon, lat)) {
+      preview.textContent = '座標數值超出有效經緯度範圍，請重新確認';
+      return;
+    }
     const c3824 = convertFromWgs84(lon, lat, 'EPSG:3824');
     const c3826 = convertFromWgs84(lon, lat, 'EPSG:3826');
     preview.innerHTML = `
@@ -596,24 +757,100 @@ function updateLocatePreview() {
   }
 }
 
-function initEventListeners() {
-  // Sidebar toggle
-  document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-    setTimeout(() => map.invalidateSize(), 220);
+function toggleTableView(enable) {
+  state.tableMode = enable;
+  const mapWrapper = document.getElementById('map-wrapper');
+  const tableView = document.getElementById('table-view');
+  const btnView = document.getElementById('btn-view-mode');
+
+  mapWrapper.classList.toggle('hidden', enable);
+  tableView.classList.toggle('hidden', !enable);
+  btnView.setAttribute('aria-pressed', String(enable));
+  btnView.textContent = enable ? '地圖檢視' : '表格檢視';
+
+  if (!enable) {
+    window.setTimeout(() => map.invalidateSize(), 100);
+  }
+  addAuditLog('VIEW_MODE', enable ? '切換至無障礙資料表檢視' : '切換至互動電子地圖');
+  announce(enable ? '已切換為無障礙控制點資料表檢視' : '已切換為互動電子地圖檢視');
+}
+
+function initAccessibilityControls() {
+  // 字級切換
+  document.querySelectorAll('[data-font-size]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const size = btn.dataset.fontSize;
+      document.documentElement.classList.remove('font-sm', 'font-md', 'font-lg');
+      document.documentElement.classList.add(`font-${size}`);
+      document.querySelectorAll('[data-font-size]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      window.setTimeout(() => map.invalidateSize(), 150);
+      announce(`字體大小已切換為${size === 'sm' ? '小' : size === 'lg' ? '大' : '標準'}`);
+    });
   });
 
-  // Tabs
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach((b) => {
-        b.classList.remove('active');
-        b.setAttribute('aria-selected', 'false');
-      });
-      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
-      btn.classList.add('active');
-      btn.setAttribute('aria-selected', 'true');
-      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+  // 高對比模式
+  const hcBtn = document.getElementById('btn-high-contrast');
+  hcBtn.addEventListener('click', () => {
+    const isHC = document.documentElement.classList.toggle('high-contrast');
+    hcBtn.setAttribute('aria-pressed', String(isHC));
+    announce(isHC ? '已啟用高對比模式' : '已關閉高對比模式');
+  });
+
+  // 地圖 / 無障礙資料表切換
+  document.getElementById('btn-view-mode').addEventListener('click', () => {
+    toggleTableView(!state.tableMode);
+  });
+  document.getElementById('btn-back-map').addEventListener('click', () => {
+    toggleTableView(false);
+  });
+
+  // Dialog 關閉時自動還原焦點
+  document.querySelectorAll('dialog.gis-dialog').forEach((dlg) => {
+    dlg.addEventListener('close', () => {
+      if (state.lastFocusedElement && typeof state.lastFocusedElement.focus === 'function') {
+        state.lastFocusedElement.focus();
+      }
+    });
+  });
+}
+
+function initEventListeners() {
+  initAccessibilityControls();
+
+  // Sidebar toggle
+  const sidebarToggle = document.getElementById('btn-toggle-sidebar');
+  sidebarToggle.addEventListener('click', () => {
+    const sidebar = document.getElementById('sidebar');
+    const isCollapsed = sidebar.classList.toggle('collapsed');
+    sidebarToggle.setAttribute('aria-expanded', String(!isCollapsed));
+    window.setTimeout(() => map.invalidateSize(), 220);
+  });
+
+  // Accessible Tabs (含鍵盤左右方向鍵導覽)
+  const tabBtns = Array.from(document.querySelectorAll('.tab-btn'));
+  function activateTab(btn) {
+    tabBtns.forEach((b) => {
+      const selected = b === btn;
+      b.classList.toggle('active', selected);
+      b.setAttribute('aria-selected', String(selected));
+      b.setAttribute('tabindex', selected ? '0' : '-1');
+    });
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+    document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    btn.focus();
+  }
+
+  tabBtns.forEach((btn, idx) => {
+    btn.addEventListener('click', () => activateTab(btn));
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        activateTab(tabBtns[(idx + 1) % tabBtns.length]);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        activateTab(tabBtns[(idx - 1 + tabBtns.length) % tabBtns.length]);
+      }
     });
   });
 
@@ -622,6 +859,9 @@ function initEventListeners() {
     state.currentCrs = e.target.value;
     document.getElementById('status-crs-badge').textContent = state.currentCrs;
     renderPointList();
+    renderAccessibleTable();
+    addAuditLog('CRS_CHANGE', `切換座標系統至 ${state.currentCrs}`);
+    announce(`座標系統已切換為 ${state.currentCrs}`);
   });
 
   // Filters
@@ -649,7 +889,7 @@ function initEventListeners() {
   document.getElementById('township-select').addEventListener('change', (e) => {
     state.selectedTownship = e.target.value;
     const tw = TOWNSHIPS.find((t) => t.name === state.selectedTownship);
-    if (tw) map.flyTo([tw.lat, tw.lon], 13, { duration: 0.6 });
+    if (tw && !state.tableMode) flyToSafe([tw.lat, tw.lon], 13);
     applyFilters();
   });
 
@@ -686,7 +926,7 @@ function initEventListeners() {
     document.getElementById('status-select').value = 'all';
     document.getElementById('radius-select').value = '0';
     document.getElementById('radius-status').textContent = '點擊地圖可設定環域中心';
-    map.flyTo([22.48, 120.58], 10);
+    flyToSafe([22.48, 120.58], 10);
     applyFilters();
   });
 
@@ -696,6 +936,7 @@ function initEventListeners() {
       map.removeLayer(currentBasemapLayer);
       currentBasemapLayer = basemaps[e.target.value].addTo(map);
       currentBasemapLayer.bringToBack();
+      addAuditLog('BASEMAP_CHANGE', `切換底圖至 ${e.target.value}`);
     });
   });
 
@@ -743,9 +984,9 @@ function initEventListeners() {
   });
   document.getElementById('btn-cancel-tool').addEventListener('click', stopMeasureMode);
 
-  document.getElementById('btn-coord-locate').addEventListener('click', () => {
+  document.getElementById('btn-coord-locate').addEventListener('click', (e) => {
     updateLocatePreview();
-    document.getElementById('dialog-locate').showModal();
+    openDialog('dialog-locate', e.currentTarget);
   });
 
   document.getElementById('locate-crs').addEventListener('change', updateLocateLabels);
@@ -760,17 +1001,20 @@ function initEventListeners() {
     if (Number.isNaN(x) || Number.isNaN(y)) return;
 
     const { lon, lat } = convertToWgs84(x, y, crs);
+    if (!isValidWgs84(lon, lat)) return;
     state.radiusMeters = radius;
     state.radiusCenter = radius > 0 ? { lat, lon } : null;
     document.getElementById('radius-select').value = String(radius);
-    document.getElementById('dialog-locate').close();
-    map.flyTo([lat, lon], 14, { duration: 0.7 });
+    closeDialog('dialog-locate');
+    if (state.tableMode) toggleTableView(false);
+    flyToSafe([lat, lon], 14);
+    addAuditLog('COORD_LOCATE', `定位查詢 (${crs}: ${x}, ${y})`);
     applyFilters();
   });
 
-  document.getElementById('btn-import').addEventListener('click', () => {
+  document.getElementById('btn-import').addEventListener('click', (e) => {
     document.getElementById('import-status').textContent = '';
-    document.getElementById('dialog-import').showModal();
+    openDialog('dialog-import', e.currentTarget);
   });
 
   document.getElementById('import-file').addEventListener('change', (e) => {
@@ -780,39 +1024,45 @@ function initEventListeners() {
 
   document.getElementById('btn-reset-demo').addEventListener('click', () => {
     state.points = [...INITIAL_CONTROL_POINTS];
-    document.getElementById('data-source-badge').textContent = '示範資料＋支援官方 CSV/GeoJSON 匯入';
+    document.getElementById('data-source-badge').textContent = '示範資料＋支援官方匯入';
     document.getElementById('import-status').textContent = '已還原屏東縣全縣內建控制點資料。';
+    addAuditLog('RESET_DATA', '還原內建全縣控制點參考資料');
     applyFilters();
   });
 
   document.getElementById('btn-export').addEventListener('click', exportFilteredCsv);
-  document.getElementById('btn-sources').addEventListener('click', () => {
-    document.getElementById('dialog-sources').showModal();
+  document.getElementById('btn-sources').addEventListener('click', (e) => openDialog('dialog-sources', e.currentTarget));
+  document.getElementById('btn-a11y-help').addEventListener('click', (e) => openDialog('dialog-a11y', e.currentTarget));
+  document.getElementById('btn-security').addEventListener('click', (e) => {
+    document.getElementById('audit-log-list').textContent = state.auditLogs.join('\n');
+    openDialog('dialog-security', e.currentTarget);
   });
+  document.getElementById('btn-export-audit').addEventListener('click', exportAuditLogFile);
 
   document.getElementById('btn-copy-coord').addEventListener('click', () => {
     if (!state.activePoint) return;
     const txt = `${state.activePoint.id} (${state.currentCrs}): ${formatCoordPair(state.activePoint.lon, state.activePoint.lat)}`;
-    navigator.clipboard?.writeText(txt);
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
     const btn = document.getElementById('btn-copy-coord');
     btn.textContent = '已複製！';
-    setTimeout(() => { btn.textContent = '複製目前座標'; }, 1400);
+    announce(`已複製 ${state.activePoint.id} 座標`);
+    window.setTimeout(() => { btn.textContent = '複製目前座標'; }, 1400);
   });
 
   document.getElementById('btn-zoom-point').addEventListener('click', () => {
     if (!state.activePoint) return;
-    map.flyTo([state.activePoint.lat, state.activePoint.lon], 17, { duration: 0.6 });
-    document.getElementById('dialog-detail').close();
+    if (state.tableMode) toggleTableView(false);
+    flyToSafe([state.activePoint.lat, state.activePoint.lon], 17);
+    closeDialog('dialog-detail');
   });
 
   document.querySelectorAll('[data-close-dialog]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.getElementById(btn.dataset.closeDialog).close();
-    });
+    btn.addEventListener('click', () => closeDialog(btn.dataset.closeDialog));
   });
 }
 
 // 11. 啟動初始化
+addAuditLog('SYSTEM_INIT', '屏東縣政府地政處控制點 GIS 系統啟動（無障礙 AA + ISO 27001 防護模式）');
 populateTownshipSelect();
 renderTownshipMarkers();
 initEventListeners();

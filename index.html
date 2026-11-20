@@ -3,35 +3,68 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>屏東縣全縣圖根點與控制點地理資訊查詢系統</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <meta name="description" content="屏東縣政府地政處全縣圖根點與控制點地理資訊查詢系統，符合數位發展部無障礙網頁 2.1 AA 規範與 ISO/IEC 27001 資訊安全防護基準。" />
+  <title>屏東縣政府地政處｜全縣圖根點與控制點地理資訊查詢系統</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin="anonymous"
+  />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- 無障礙：跳到主要內容區塊 -->
+  <a href="#main-content" class="skip-link">跳到主要內容區塊</a>
+
+  <!-- 螢幕報讀器即時動態播報區 -->
+  <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <noscript>
+    <div class="noscript-banner" role="alert">
+      <strong>提醒：</strong>您的瀏覽器目前停用 JavaScript，本系統之互動地圖與座標轉換功能需要啟用 JavaScript 才能正常運作。如需協助查詢屏東縣控制點或圖根點資料，請洽屏東縣政府地政處測量科（電話：08-7320415）。
+    </div>
+  </noscript>
+
   <div class="app-shell">
-    <!-- Top GIS Toolbar -->
-    <header class="topbar">
+    <!-- Top GIS Header & Navigation -->
+    <header class="topbar" role="banner">
       <div class="topbar-brand">
-        <button id="btn-toggle-sidebar" class="icon-btn" type="button" aria-label="切換側邊欄" title="切換側邊查詢面板">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <a href="#U" id="U" accesskey="U" class="accesskey-brick" title="上方功能導覽區 (Alt+U)">:::</a>
+        <button
+          id="btn-toggle-sidebar"
+          class="icon-btn"
+          type="button"
+          aria-label="展開或收合左側查詢面板"
+          aria-expanded="true"
+          aria-controls="sidebar"
+          title="展開或收合左側查詢面板"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
         <div class="brand-title-group">
-          <div class="brand-badge">PT-GIS</div>
+          <div class="brand-badge" aria-hidden="true">屏東地政</div>
           <div>
             <h1>屏東縣全縣圖根點與控制點查詢系統</h1>
-            <p class="brand-subtitle">Pingtung County Control Points &amp; Cadastral Reference GIS</p>
+            <p class="brand-subtitle">屏東縣政府地政處・無障礙 AA 暨 ISO 27001 資安防護版</p>
           </div>
         </div>
       </div>
 
-      <div class="topbar-controls">
+      <nav class="topbar-controls" aria-label="主要功能工具列">
+        <!-- 無障礙：字體大小與高對比切換 -->
+        <div class="a11y-tools" role="group" aria-label="無障礙顯示設定">
+          <button type="button" class="a11y-btn" data-font-size="sm" aria-label="縮小字體" title="縮小字體">A-</button>
+          <button type="button" class="a11y-btn active" data-font-size="md" aria-label="標準字體" title="標準字體">A</button>
+          <button type="button" class="a11y-btn" data-font-size="lg" aria-label="放大字體" title="放大字體">A+</button>
+          <button type="button" id="btn-high-contrast" class="a11y-btn" aria-pressed="false" title="切換高對比模式">高對比</button>
+          <button type="button" id="btn-view-mode" class="a11y-btn" aria-pressed="false" title="切換地圖檢視與無障礙表格檢視">表格檢視</button>
+        </div>
+
         <!-- Coordinate System Switcher -->
-        <div class="crs-switcher" role="group" aria-label="座標系統選擇">
-          <span class="crs-label">座標系統</span>
-          <select id="crs-select" aria-label="選擇顯示與查詢座標系統">
+        <div class="crs-switcher">
+          <label class="crs-label" for="crs-select">座標系統</label>
+          <select id="crs-select">
             <option value="EPSG:3824" selected>TWD97 經緯度 (EPSG:3824)</option>
             <option value="EPSG:4326">WGS84 經緯度 (EPSG:4326)</option>
             <option value="EPSG:3826">TWD97 TM2 121° (EPSG:3826)</option>
@@ -40,78 +73,88 @@
 
         <div class="topbar-actions">
           <button id="btn-coord-locate" class="tool-btn" type="button" title="輸入座標定位與環域查詢">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
             <span>座標定位</span>
           </button>
-          <button id="btn-measure" class="tool-btn" type="button" title="在地圖上量測距離">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>
+          <button id="btn-measure" class="tool-btn" type="button" aria-pressed="false" title="在地圖上量測距離">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.3 8.7 8.7 21.3c-1 1-2.5 1-3.4 0l-2.6-2.6c-1-1-1-2.5 0-3.4L15.3 2.7c1-1 2.5-1 3.4 0l2.6 2.6c1 1 1 2.5 0 3.4Z"/><path d="m7.5 10.5 2 2"/><path d="m10.5 7.5 2 2"/><path d="m13.5 4.5 2 2"/><path d="m4.5 13.5 2 2"/></svg>
             <span>測距</span>
           </button>
           <button id="btn-import" class="tool-btn" type="button" title="匯入國土測繪中心或地政處 CSV/GeoJSON 控制點資料">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span>匯入圖資</span>
           </button>
-          <button id="btn-export" class="tool-btn" type="button" title="匯出目前篩選控制點 (CSV/GeoJSON)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <button id="btn-export" class="tool-btn" type="button" title="匯出目前篩選控制點為 CSV">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>匯出</span>
           </button>
-          <button id="btn-sources" class="tool-btn tool-btn-accent" type="button" title="官方資料來源與介接說明">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <button id="btn-sources" class="tool-btn" type="button" title="官方資料來源與介接說明">
             <span>資料來源</span>
           </button>
+          <button id="btn-a11y-help" class="tool-btn" type="button" title="網站導覽與無障礙快捷鍵說明">
+            <span>網站導覽</span>
+          </button>
+          <button id="btn-security" class="tool-btn tool-btn-accent" type="button" title="ISO 27001 資安宣告與作業稽核紀錄">
+            <span>資安與稽核</span>
+          </button>
         </div>
-      </div>
+      </nav>
     </header>
 
     <!-- Main GIS Workspace -->
     <div class="workspace">
       <!-- Left Collapsible Sidebar -->
-      <aside id="sidebar" class="sidebar" aria-label="圖層與控制點查詢面板">
-        <div class="sidebar-tabs" role="tablist">
-          <button class="tab-btn active" role="tab" aria-selected="true" data-tab="query">控制點查詢</button>
-          <button class="tab-btn" role="tab" aria-selected="false" data-tab="layers">底圖與圖層</button>
-          <button class="tab-btn" role="tab" aria-selected="false" data-tab="stats">統計總覽</button>
+      <aside id="sidebar" class="sidebar" aria-label="左側圖層與控制點查詢區">
+        <div class="sidebar-access-bar">
+          <a href="#L" id="L" accesskey="L" class="accesskey-brick accesskey-brick-light" title="左側查詢控制區 (Alt+L)">:::</a>
+          <span class="sidebar-access-label">查詢與圖層控制面板</span>
+        </div>
+
+        <div class="sidebar-tabs" role="tablist" aria-label="功能頁籤">
+          <button id="tab-btn-query" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-query" data-tab="query" type="button">控制點查詢</button>
+          <button id="tab-btn-layers" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-layers" data-tab="layers" type="button" tabindex="-1">底圖與圖層</button>
+          <button id="tab-btn-stats" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-stats" data-tab="stats" type="button" tabindex="-1">統計總覽</button>
         </div>
 
         <!-- Tab 1: Query & Filter -->
-        <div id="tab-query" class="tab-panel active">
+        <section id="tab-query" class="tab-panel active" role="tabpanel" aria-labelledby="tab-btn-query">
           <div class="panel-section">
             <label class="field-label" for="search-input">關鍵字檢索（點號／點名／地段）</label>
             <div class="search-box">
-              <input id="search-input" type="search" placeholder="例如：PT01、屏東、鵝鑾鼻、萬丹..." />
+              <input id="search-input" type="search" autocomplete="off" maxlength="60" placeholder="例如：PT-A001、屏東、鵝鑾鼻、萬丹..." />
               <button id="btn-clear-filters" class="btn-link" type="button">重設</button>
             </div>
           </div>
 
-          <div class="panel-section">
-            <span class="field-label">控制點等級（一至四等分色顯示）</span>
+          <fieldset class="panel-section fieldset-reset">
+            <legend class="field-label">控制點等級（一至四等分色與幾何符號）</legend>
             <div class="order-filters" id="order-filters">
               <label class="order-chip">
                 <input type="checkbox" value="1" checked />
-                <span class="dot dot-1"></span>
+                <span class="symbol symbol-1" aria-hidden="true">▲</span>
                 <span>一等控制點</span>
-                <span class="chip-count" id="count-order-1">0</span>
+                <span class="chip-count" id="count-order-1" aria-label="筆數">0</span>
               </label>
               <label class="order-chip">
                 <input type="checkbox" value="2" checked />
-                <span class="dot dot-2"></span>
+                <span class="symbol symbol-2" aria-hidden="true">◆</span>
                 <span>二等控制點</span>
-                <span class="chip-count" id="count-order-2">0</span>
+                <span class="chip-count" id="count-order-2" aria-label="筆數">0</span>
               </label>
               <label class="order-chip">
                 <input type="checkbox" value="3" checked />
-                <span class="dot dot-3"></span>
+                <span class="symbol symbol-3" aria-hidden="true">■</span>
                 <span>三等控制點</span>
-                <span class="chip-count" id="count-order-3">0</span>
+                <span class="chip-count" id="count-order-3" aria-label="筆數">0</span>
               </label>
               <label class="order-chip">
                 <input type="checkbox" value="4" checked />
-                <span class="dot dot-4"></span>
+                <span class="symbol symbol-4" aria-hidden="true">●</span>
                 <span>四等／圖根點</span>
-                <span class="chip-count" id="count-order-4">0</span>
+                <span class="chip-count" id="count-order-4" aria-label="筆數">0</span>
               </label>
             </div>
-          </div>
+          </fieldset>
 
           <div class="panel-section grid-2">
             <div>
@@ -161,16 +204,16 @@
             <span class="list-hint" id="radius-status">點擊地圖可設定環域中心</span>
           </div>
 
-          <div id="point-list" class="point-list" role="list">
-            <!-- Dynamically populated -->
+          <div id="point-list" class="point-list" role="region" aria-label="控制點查詢結果清單">
+            <!-- Dynamically populated as accessible <button> cards -->
           </div>
-        </div>
+        </section>
 
         <!-- Tab 2: Basemap & Overlay Layers -->
-        <div id="tab-layers" class="tab-panel">
-          <div class="panel-section">
-            <h2 class="section-title">政府開放電子地圖底圖 (NLSC WMTS)</h2>
-            <p class="section-desc">介接內政部國土測繪中心「國土測繪圖資服務雲」公開 WMTS 圖磚服務。</p>
+        <section id="tab-layers" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-layers">
+          <fieldset class="panel-section fieldset-reset">
+            <legend class="section-title">政府開放電子地圖底圖 (NLSC WMTS)</legend>
+            <p class="section-desc">介接內政部國土測繪中心「國土測繪圖資服務雲」公開 HTTPS WMTS 圖磚服務。</p>
             <div class="basemap-list" id="basemap-list">
               <label class="basemap-option">
                 <input type="radio" name="basemap" value="EMAP" checked />
@@ -204,14 +247,14 @@
                 <input type="radio" name="basemap" value="OSM" />
                 <div>
                   <strong>OpenStreetMap 開放街圖</strong>
-                  <small>國際開放街道圖（離線/備援參考）</small>
+                  <small>國際開放街道圖（備援參考）</small>
                 </div>
               </label>
             </div>
-          </div>
+          </fieldset>
 
-          <div class="panel-section">
-            <h2 class="section-title">套疊圖層 (Overlays)</h2>
+          <fieldset class="panel-section fieldset-reset">
+            <legend class="section-title">套疊圖層 (Overlays)</legend>
             <label class="toggle-row">
               <input type="checkbox" id="overlay-emap2" />
               <span>通用電子地圖透明路網 (EMAP2)</span>
@@ -224,11 +267,11 @@
               <input type="checkbox" id="overlay-labels" checked />
               <span>地圖顯示控制點點號標籤</span>
             </label>
-          </div>
-        </div>
+          </fieldset>
+        </section>
 
         <!-- Tab 3: Statistics -->
-        <div id="tab-stats" class="tab-panel">
+        <section id="tab-stats" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-stats">
           <div class="panel-section">
             <h2 class="section-title">屏東縣控制點分布統計</h2>
             <div id="stats-cards" class="stats-grid"></div>
@@ -237,51 +280,90 @@
             <h2 class="section-title">各地政事務所轄區統計</h2>
             <div id="office-stats" class="office-stats-list"></div>
           </div>
-        </div>
+        </section>
       </aside>
 
-      <!-- Map Container -->
-      <main class="map-stage">
-        <div id="map" class="map-canvas"></div>
+      <!-- Main Content Stage (Map + Accessible Table Alternative) -->
+      <main id="main-content" class="map-stage" tabindex="-1" aria-label="主要地圖與控制點資料檢視區">
+        <a href="#C" id="C" accesskey="C" class="accesskey-brick accesskey-brick-floating" title="中央主要內容區 (Alt+C)">:::</a>
 
-        <!-- Floating Legend -->
-        <div class="map-legend" aria-label="控制點等級圖例">
-          <div class="legend-title">控制點等級圖例</div>
-          <div class="legend-item"><span class="symbol symbol-1">▲</span> 一等控制點（國家基本）</div>
-          <div class="legend-item"><span class="symbol symbol-2">◆</span> 二等控制點（衛星/精密）</div>
-          <div class="legend-item"><span class="symbol symbol-3">■</span> 三等控制點（加密控制）</div>
-          <div class="legend-item"><span class="symbol symbol-4">●</span> 四等控制點／圖根點</div>
+        <!-- Interactive GIS Map -->
+        <div id="map-wrapper" class="map-wrapper">
+          <div id="map" class="map-canvas" role="region" aria-label="屏東縣控制點互動電子地圖。鍵盤使用者可點擊上方「表格檢視」按鈕改以無障礙資料表操作。"></div>
+
+          <!-- Floating Legend -->
+          <section class="map-legend" aria-label="控制點等級圖例">
+            <h2 class="legend-title">控制點等級圖例</h2>
+            <div class="legend-item"><span class="symbol symbol-1" aria-hidden="true">▲</span> 一等控制點（紅・國家基本）</div>
+            <div class="legend-item"><span class="symbol symbol-2" aria-hidden="true">◆</span> 二等控制點（橙・衛星／精密）</div>
+            <div class="legend-item"><span class="symbol symbol-3" aria-hidden="true">■</span> 三等控制點（藍・加密控制）</div>
+            <div class="legend-item"><span class="symbol symbol-4" aria-hidden="true">●</span> 四等控制點／圖根點（綠）</div>
+          </section>
+
+          <!-- Active Tool Banner (Measure / Radius) -->
+          <div id="tool-banner" class="tool-banner hidden" role="status" aria-live="polite">
+            <span id="tool-banner-text"></span>
+            <button id="btn-cancel-tool" type="button" class="btn-small">結束</button>
+          </div>
         </div>
 
-        <!-- Active Tool Banner (Measure / Radius) -->
-        <div id="tool-banner" class="tool-banner hidden">
-          <span id="tool-banner-text"></span>
-          <button id="btn-cancel-tool" type="button" class="btn-small">結束</button>
-        </div>
+        <!-- Accessible Data Table View (WCAG 2.1 AA Non-Map Alternative) -->
+        <section id="table-view" class="table-view hidden" aria-label="無障礙控制點資料表檢視">
+          <div class="table-view-header">
+            <div>
+              <h2>屏東縣控制點查詢結果（無障礙資料表）</h2>
+              <p class="table-view-desc">本檢視模式專為鍵盤導覽與螢幕報讀器設計，與地圖查詢條件即時同步。</p>
+            </div>
+            <button id="btn-back-map" type="button" class="btn-primary">返回互動地圖</button>
+          </div>
+          <div class="table-scroll">
+            <table class="a11y-data-table">
+              <caption class="sr-only">屏東縣各等級控制點與圖根點清單</caption>
+              <thead>
+                <tr>
+                  <th scope="col">點號</th>
+                  <th scope="col">點名</th>
+                  <th scope="col">等級</th>
+                  <th scope="col">鄉鎮市／地段</th>
+                  <th scope="col">地政事務所</th>
+                  <th scope="col" id="th-coords">座標 (EPSG:3824)</th>
+                  <th scope="col">正高 (m)</th>
+                  <th scope="col">狀態</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody id="a11y-table-body"></tbody>
+            </table>
+          </div>
+        </section>
 
-        <!-- Bottom Coordinate Status Bar -->
-        <div class="statusbar">
+        <!-- Bottom Coordinate Status Bar & Government Footer -->
+        <footer class="statusbar" role="contentinfo">
           <div class="status-left">
-            <span class="status-pill" id="status-crs-badge">EPSG:3824 (TWD97)</span>
-            <span id="cursor-coords" class="mono">移動滑鼠檢視即時座標...</span>
+            <a href="#Z" id="Z" accesskey="Z" class="accesskey-brick" title="下方狀態與機關資訊區 (Alt+Z)">:::</a>
+            <span class="status-pill" id="status-crs-badge">EPSG:3824</span>
+            <span id="cursor-coords" class="mono">移動滑鼠檢視即時座標</span>
           </div>
           <div class="status-right">
-            <span id="data-source-badge" class="source-pill">示範資料＋支援官方 CSV/GeoJSON 匯入</span>
-            <span id="zoom-level" class="mono">Z: 10</span>
+            <span class="gov-footer-info">屏東縣政府地政處・屏東市自由路527號・(08)732-0415</span>
+            <span class="compliance-pill" title="遵循數位發展部無障礙網頁開發規範 2.1 AA 等級">無障礙 AA</span>
+            <span class="compliance-pill" title="遵循 ISO/IEC 27001 資訊安全管理規範">ISO 27001</span>
+            <span id="data-source-badge" class="source-pill">示範資料＋支援官方匯入</span>
+            <span id="zoom-level" class="mono" aria-label="地圖縮放層級">Z: 10</span>
           </div>
-        </div>
+        </footer>
       </main>
     </div>
   </div>
 
   <!-- Dialog: Point Detail (點之記) -->
-  <dialog id="dialog-detail" class="gis-dialog">
+  <dialog id="dialog-detail" class="gis-dialog" aria-labelledby="detail-title">
     <div class="dialog-header">
       <div>
         <span id="detail-order-badge" class="order-badge"></span>
         <h2 id="detail-title">控制點詳細資訊</h2>
       </div>
-      <button class="icon-btn" type="button" data-close-dialog="dialog-detail" aria-label="關閉">✕</button>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-detail" aria-label="關閉詳細資訊視窗">✕</button>
     </div>
     <div id="detail-body" class="dialog-body"></div>
     <div class="dialog-footer">
@@ -291,13 +373,13 @@
   </dialog>
 
   <!-- Dialog: Coordinate Locator & Converter -->
-  <dialog id="dialog-locate" class="gis-dialog">
+  <dialog id="dialog-locate" class="gis-dialog" aria-labelledby="locate-dialog-title">
     <div class="dialog-header">
-      <h2>座標定位與轉換查詢</h2>
-      <button class="icon-btn" type="button" data-close-dialog="dialog-locate" aria-label="關閉">✕</button>
+      <h2 id="locate-dialog-title">座標定位與轉換查詢</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-locate" aria-label="關閉座標定位視窗">✕</button>
     </div>
     <div class="dialog-body">
-      <p class="dialog-desc">輸入已知座標，系統將自動定位至地圖並搜尋鄰近控制點。</p>
+      <p class="dialog-desc">輸入已知座標，系統將驗證座標合理範圍，並自動定位至地圖及搜尋鄰近控制點。</p>
       <div class="form-group">
         <label for="locate-crs">輸入座標系統</label>
         <select id="locate-crs">
@@ -325,7 +407,7 @@
           <option value="5000">5 公里內</option>
         </select>
       </div>
-      <div id="locate-converted" class="converted-preview mono"></div>
+      <div id="locate-converted" class="converted-preview mono" aria-live="polite"></div>
     </div>
     <div class="dialog-footer">
       <button type="button" class="btn-secondary" data-close-dialog="dialog-locate">取消</button>
@@ -334,14 +416,14 @@
   </dialog>
 
   <!-- Dialog: Import Official Data -->
-  <dialog id="dialog-import" class="gis-dialog">
+  <dialog id="dialog-import" class="gis-dialog" aria-labelledby="import-dialog-title">
     <div class="dialog-header">
-      <h2>匯入控制點資料 (CSV / GeoJSON)</h2>
-      <button class="icon-btn" type="button" data-close-dialog="dialog-import" aria-label="關閉">✕</button>
+      <h2 id="import-dialog-title">匯入控制點資料 (CSV / GeoJSON)</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-import" aria-label="關閉匯入圖資視窗">✕</button>
     </div>
     <div class="dialog-body">
       <p class="dialog-desc">
-        可將向「內政部國土測繪中心」或「屏東縣政府地政處／各地政事務所」取得之控制點成果檔案（CSV 或 GeoJSON）直接匯入本系統套疊顯示。
+        可將向「內政部國土測繪中心」或「屏東縣政府地政處／各地政事務所」取得之控制點成果檔案直接匯入。<strong>資安保護：檔案僅於您的瀏覽器本機解析，不會上傳至任何外部伺服器。</strong>
       </p>
       <div class="form-group">
         <label for="import-crs">檔案座標系統</label>
@@ -359,11 +441,11 @@
         </select>
       </div>
       <div class="form-group">
-        <label for="import-file">選擇 CSV 或 GeoJSON 檔案</label>
+        <label for="import-file">選擇 CSV 或 GeoJSON 檔案（單檔上限 5 MB、最多 10,000 筆）</label>
         <input id="import-file" type="file" accept=".csv,.geojson,.json" />
         <small class="help-text">CSV 建議欄位：<code>點號,點名,等級(1-4),X(經度/E),Y(緯度/N),高程,鄉鎮市,地政事務所,狀態</code></small>
       </div>
-      <div id="import-status" class="import-status"></div>
+      <div id="import-status" class="import-status" role="status" aria-live="polite"></div>
     </div>
     <div class="dialog-footer">
       <button id="btn-reset-demo" type="button" class="btn-secondary">還原內建全縣資料</button>
@@ -372,20 +454,20 @@
   </dialog>
 
   <!-- Dialog: Official Data Sources -->
-  <dialog id="dialog-sources" class="gis-dialog">
+  <dialog id="dialog-sources" class="gis-dialog" aria-labelledby="sources-dialog-title">
     <div class="dialog-header">
-      <h2>官方圖資與控制點資料來源說明</h2>
-      <button class="icon-btn" type="button" data-close-dialog="dialog-sources" aria-label="關閉">✕</button>
+      <h2 id="sources-dialog-title">官方圖資與控制點資料來源說明</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-sources" aria-label="關閉資料來源視窗">✕</button>
     </div>
     <div class="dialog-body source-docs">
-      <h3>1. 政府開放電子底圖 (即時串接)</h3>
+      <h3>1. 政府開放電子底圖（HTTPS 即時串接）</h3>
       <ul>
-        <li><strong>內政部國土測繪中心「國土測繪圖資服務雲」WMTS</strong>：本系統直接介接 <code>https://wmts.nlsc.gov.tw/wmts</code>，提供臺灣通用電子地圖 (<code>EMAP</code>)、正射影像圖 (<code>PHOTO2</code>)、1/5000 基本地形圖 (<code>B5000</code>)、國土利用現況圖 (<code>LUIMAP</code>) 與透明路網 (<code>EMAP2</code>)。</li>
+        <li><strong>內政部國土測繪中心「國土測繪圖資服務雲」WMTS</strong>：本系統全面透過 HTTPS 加密介接 <code>https://wmts.nlsc.gov.tw/wmts</code>，提供臺灣通用電子地圖 (<code>EMAP</code>)、正射影像圖 (<code>PHOTO2</code>)、1/5000 基本地形圖 (<code>B5000</code>)、國土利用現況圖 (<code>LUIMAP</code>) 與透明路網 (<code>EMAP2</code>)。</li>
       </ul>
       <h3>2. 控制點／圖根點官方來源</h3>
       <ul>
-        <li><strong>內政部國土測繪中心「全國衛星追蹤站暨基本控制點查詢系統」</strong>：<a href="https://track.nlsc.gov.tw" target="_blank" rel="noopener noreferrer">https://track.nlsc.gov.tw</a>（掌管一、二等衛星控制點、水準點、重力點）。</li>
-        <li><strong>屏東縣政府控制點查詢系統（地政處）</strong>：<a href="http://cp.pthg.gov.tw" target="_blank" rel="noopener noreferrer">http://cp.pthg.gov.tw</a>（整合轄內加密控制點與地籍圖根點）。</li>
+        <li><strong>內政部國土測繪中心「全國衛星追蹤站暨基本控制點查詢系統」</strong>：<a href="https://track.nlsc.gov.tw" target="_blank" rel="noopener noreferrer">https://track.nlsc.gov.tw（另開新視窗）</a></li>
+        <li><strong>屏東縣政府地政處</strong>：<a href="https://www.pthg.gov.tw/planlnd/" target="_blank" rel="noopener noreferrer">屏東縣政府地政處官網（另開新視窗）</a>（整合轄內加密控制點與地籍圖根點查詢業務）。</li>
         <li><strong>屏東縣六大地政事務所（測量課）</strong>：屏東、潮州、東港、恆春、里港、枋寮地政事務所，負責轄區內三、四等控制點及地籍圖根點成果申請與點之記核發。</li>
       </ul>
       <h3>3. 座標系統說明</h3>
@@ -395,7 +477,7 @@
         <li><strong>TWD97 TM2 121° (EPSG:3826)</strong>：臺灣二度分帶平面直角坐標（E, N 公尺）。</li>
       </ul>
       <p class="notice-box">
-        <strong>資料聲明：</strong>因政府資安規範，公開平台未提供免登入之即時圖根點批次 API。本系統內建涵蓋屏東縣 33 鄉鎮市之一至四等控制點空間參考資料供 GIS 平台展示與測試，並支援透過右上角「匯入圖資」載入您向官方申請取得之真實 CSV／GeoJSON 控制點成果檔。
+        <strong>資料聲明：</strong>因政府資安與測繪成果管理規範，公開平台未提供免登入之即時圖根點批次 API。本系統內建涵蓋屏東縣 33 鄉鎮市之一至四等控制點空間參考資料供展示與測試，並支援透過「匯入圖資」於本機載入經核准取得之官方 CSV／GeoJSON 控制點成果檔。
       </p>
     </div>
     <div class="dialog-footer">
@@ -403,8 +485,76 @@
     </div>
   </dialog>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+  <!-- Dialog: Accessibility & Site Map (無障礙網站導覽) -->
+  <dialog id="dialog-a11y" class="gis-dialog" aria-labelledby="a11y-dialog-title">
+    <div class="dialog-header">
+      <h2 id="a11y-dialog-title">網站導覽與無障礙網頁宣告 (AA 等級)</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-a11y" aria-label="關閉網站導覽視窗">✕</button>
+    </div>
+    <div class="dialog-body source-docs">
+      <p>本網站依循數位發展部「無障礙網頁開發規範 2.1 版（AA 等級 / WCAG 2.1 AA）」原則設計，提供導盲磚快捷鍵、鍵盤完整導覽、高對比模式、字級縮放及純文字資料表替代檢視。</p>
+      <h3>快速鍵 (Accesskey) 設定說明</h3>
+      <table class="detail-table">
+        <thead>
+          <tr>
+            <th scope="col">快速鍵</th>
+            <th scope="col">功能區塊說明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Alt + U</th><td>上方功能導覽區（含字級切換、高對比、表格檢視、座標系統與工具列）</td></tr>
+          <tr><th scope="row">Alt + L</th><td>左側查詢與圖層控制面板（控制點查詢、底圖切換、統計總覽）</td></tr>
+          <tr><th scope="row">Alt + C</th><td>中央主要內容區（互動式電子地圖或無障礙控制點資料表）</td></tr>
+          <tr><th scope="row">Alt + Z</th><td>下方即時座標狀態列與屏東縣政府地政處聯絡資訊區</td></tr>
+        </tbody>
+      </table>
+      <p class="help-text">※ macOS 作業系統請使用 <code>Control + Option + 快速鍵</code>；Firefox 瀏覽器請使用 <code>Alt + Shift + 快速鍵</code>。</p>
+      <h3>螢幕報讀器與鍵盤操作建議</h3>
+      <ul>
+        <li>點擊頂部「<strong>表格檢視</strong>」按鈕可切換為標準語意化資料表，完整瀏覽並檢視各點位之「點之記」與複製座標。</li>
+        <li>頁籤列支援鍵盤左右方向鍵（<code>←</code> / <code>→</code>）切換，所有彈出視窗均支援 <code>Esc</code> 鍵關閉並自動還原焦點。</li>
+      </ul>
+    </div>
+    <div class="dialog-footer">
+      <button type="button" class="btn-primary" data-close-dialog="dialog-a11y">關閉</button>
+    </div>
+  </dialog>
+
+  <!-- Dialog: ISO 27001 Security, Privacy & Audit Log -->
+  <dialog id="dialog-security" class="gis-dialog" aria-labelledby="security-dialog-title">
+    <div class="dialog-header">
+      <h2 id="security-dialog-title">ISO/IEC 27001 資訊安全防護與作業稽核紀錄</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-security" aria-label="關閉資安與稽核視窗">✕</button>
+    </div>
+    <div class="dialog-body source-docs">
+      <h3>一、ISO/IEC 27001 資安控制措施落實項目</h3>
+      <ul>
+        <li><strong>傳輸安全 (A.8.24)</strong>：全站強制 HTTPS 並啟用 HSTS（<code>max-age=31536000; includeSubDomains; preload</code>），所有外部底圖均走 HTTPS 加密連線。</li>
+        <li><strong>應用程式安全與標頭防護 (A.8.28)</strong>：配置嚴格 <code>Content-Security-Policy</code>、<code>X-Frame-Options: DENY</code>（防點擊劫持）、<code>X-Content-Type-Options: nosniff</code>、<code>Referrer-Policy</code> 與最小化 <code>Permissions-Policy</code>。</li>
+        <li><strong>供應鏈與第三方資源完整性 (A.8.30)</strong>：所有外部函式庫（Leaflet、Proj4js）均啟用 Subresource Integrity (SRI) 雜湊驗證，並移除第三方字型與追蹤腳本。</li>
+        <li><strong>輸入驗證與防注入攻擊</strong>：匯入檔案採本機解析（不上傳雲端）、強制 5 MB 容量上限、副檔名白名單與座標值域檢查；匯出 CSV 內建防範公式注入（CSV Injection）跳脫機制；所有動態內容均進行 HTML 編碼防禦 XSS。</li>
+        <li><strong>隱私權保護</strong>：本系統不設置追蹤型 Cookie、不蒐集個人識別資訊（PII），顯示偏好僅暫存於本機工作階段。</li>
+      </ul>
+
+      <h3>二、本次工作階段作業稽核紀錄 (ISO 27001 A.8.15)</h3>
+      <div id="audit-log-list" class="audit-log-box mono" tabindex="0" aria-label="本次作業稽核紀錄清單"></div>
+    </div>
+    <div class="dialog-footer">
+      <button id="btn-export-audit" type="button" class="btn-secondary">匯出稽核日誌 (.txt)</button>
+      <button type="button" class="btn-primary" data-close-dialog="dialog-security">關閉</button>
+    </div>
+  </dialog>
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin="anonymous"
+  ></script>
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"
+    integrity="sha384-BIsA8GBrihzaRmijjpqTCihj8D5Vox3hyBFg9sJiTGAEOv6KusZ8QOCKbTFEAfhm"
+    crossorigin="anonymous"
+  ></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
