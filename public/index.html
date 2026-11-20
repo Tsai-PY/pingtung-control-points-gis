@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="屏東縣政府地政處全縣圖根點與控制點地理資訊查詢系統，符合數位發展部無障礙網頁 2.1 AA 規範與 ISO/IEC 27001 資訊安全防護基準。" />
+  <meta name="description" content="屏東縣政府地政處全縣圖根點與控制點地理資訊查詢系統，依無障礙網頁 2.1 AA 原則與資安防護基準設計。" />
   <title>屏東縣政府地政處｜全縣圖根點與控制點地理資訊查詢系統</title>
   <link
     rel="stylesheet"
@@ -30,7 +30,7 @@
     <!-- Top GIS Header & Navigation -->
     <header class="topbar" role="banner">
       <div class="topbar-brand">
-        <a href="#U" id="U" accesskey="U" class="accesskey-brick" title="上方功能導覽區 (Alt+U)">:::</a>
+        <a href="#U" id="U" accesskey="U" class="accesskey-brick" aria-label="上方功能導覽區" title="上方功能導覽區">:::</a>
         <button
           id="btn-toggle-sidebar"
           class="icon-btn"
@@ -46,7 +46,7 @@
           <div class="brand-badge" aria-hidden="true">屏東地政</div>
           <div>
             <h1>屏東縣全縣圖根點與控制點查詢系統</h1>
-            <p class="brand-subtitle">屏東縣政府地政處・無障礙 AA 暨 ISO 27001 資安防護版</p>
+            <p class="brand-subtitle">屏東縣政府地政處・無障礙 AA 設計暨前端資安防護強化版</p>
           </div>
         </div>
       </div>
@@ -91,11 +91,11 @@
           <button id="btn-sources" class="tool-btn" type="button" title="官方資料來源與介接說明">
             <span>資料來源</span>
           </button>
-          <button id="btn-a11y-help" class="tool-btn" type="button" title="網站導覽與無障礙快捷鍵說明">
+          <button id="btn-a11y-help" class="tool-btn" type="button" title="網站導覽與無障礙說明">
             <span>網站導覽</span>
           </button>
-          <button id="btn-security" class="tool-btn tool-btn-accent" type="button" title="ISO 27001 資安宣告與作業稽核紀錄">
-            <span>資安與稽核</span>
+          <button id="btn-security" class="tool-btn tool-btn-accent" type="button" title="資安防護說明與前端操作記錄">
+            <span>資安說明</span>
           </button>
         </div>
       </nav>
@@ -106,7 +106,7 @@
       <!-- Left Collapsible Sidebar -->
       <aside id="sidebar" class="sidebar" aria-label="左側圖層與控制點查詢區">
         <div class="sidebar-access-bar">
-          <a href="#L" id="L" accesskey="L" class="accesskey-brick accesskey-brick-light" title="左側查詢控制區 (Alt+L)">:::</a>
+          <a href="#L" id="L" accesskey="L" class="accesskey-brick accesskey-brick-light" aria-label="左側查詢控制區" title="左側查詢控制區">:::</a>
           <span class="sidebar-access-label">查詢與圖層控制面板</span>
         </div>
 
@@ -205,7 +205,7 @@
           </div>
 
           <div id="point-list" class="point-list" role="region" aria-label="控制點查詢結果清單">
-            <!-- Dynamically populated as accessible <button> cards -->
+            <!-- Dynamically populated with DOM APIs (no innerHTML) -->
           </div>
         </section>
 
@@ -285,7 +285,7 @@
 
       <!-- Main Content Stage (Map + Accessible Table Alternative) -->
       <main id="main-content" class="map-stage" tabindex="-1" aria-label="主要地圖與控制點資料檢視區">
-        <a href="#C" id="C" accesskey="C" class="accesskey-brick accesskey-brick-floating" title="中央主要內容區 (Alt+C)">:::</a>
+        <a href="#C" id="C" accesskey="C" class="accesskey-brick accesskey-brick-floating" aria-label="中央主要內容區" title="中央主要內容區">:::</a>
 
         <!-- Interactive GIS Map -->
         <div id="map-wrapper" class="map-wrapper">
@@ -340,14 +340,14 @@
         <!-- Bottom Coordinate Status Bar & Government Footer -->
         <footer class="statusbar" role="contentinfo">
           <div class="status-left">
-            <a href="#Z" id="Z" accesskey="Z" class="accesskey-brick" title="下方狀態與機關資訊區 (Alt+Z)">:::</a>
+            <a href="#Z" id="Z" accesskey="Z" class="accesskey-brick" aria-label="下方狀態與機關資訊區" title="下方狀態與機關資訊區">:::</a>
             <span class="status-pill" id="status-crs-badge">EPSG:3824</span>
             <span id="cursor-coords" class="mono">移動滑鼠檢視即時座標</span>
           </div>
           <div class="status-right">
             <span class="gov-footer-info">屏東縣政府地政處・屏東市自由路527號・(08)732-0415</span>
-            <span class="compliance-pill" title="遵循數位發展部無障礙網頁開發規範 2.1 AA 等級">無障礙 AA</span>
-            <span class="compliance-pill" title="遵循 ISO/IEC 27001 資訊安全管理規範">ISO 27001</span>
+            <span class="compliance-pill" title="依無障礙網頁開發規範 2.1 AA 原則設計">無障礙 AA 設計</span>
+            <span class="compliance-pill" title="已套用前端資安標頭與輸入防禦機制">資安強化</span>
             <span id="data-source-badge" class="source-pill">示範資料＋支援官方匯入</span>
             <span id="zoom-level" class="mono" aria-label="地圖縮放層級">Z: 10</span>
           </div>
@@ -423,7 +423,7 @@
     </div>
     <div class="dialog-body">
       <p class="dialog-desc">
-        可將向「內政部國土測繪中心」或「屏東縣政府地政處／各地政事務所」取得之控制點成果檔案直接匯入。<strong>資安保護：檔案僅於您的瀏覽器本機解析，不會上傳至任何外部伺服器。</strong>
+        可將向「內政部國土測繪中心」或「屏東縣政府地政處／各地政事務所」取得之控制點成果檔案直接匯入。<strong>資安保護：檔案僅於您的瀏覽器本機解析（使用純文字 DOM 節點渲染，不使用 innerHTML），不會上傳至任何外部伺服器。</strong>
       </p>
       <div class="form-group">
         <label for="import-crs">檔案座標系統</label>
@@ -488,27 +488,27 @@
   <!-- Dialog: Accessibility & Site Map (無障礙網站導覽) -->
   <dialog id="dialog-a11y" class="gis-dialog" aria-labelledby="a11y-dialog-title">
     <div class="dialog-header">
-      <h2 id="a11y-dialog-title">網站導覽與無障礙網頁宣告 (AA 等級)</h2>
+      <h2 id="a11y-dialog-title">網站導覽與無障礙設計說明 (AA 原則)</h2>
       <button class="icon-btn" type="button" data-close-dialog="dialog-a11y" aria-label="關閉網站導覽視窗">✕</button>
     </div>
     <div class="dialog-body source-docs">
-      <p>本網站依循數位發展部「無障礙網頁開發規範 2.1 版（AA 等級 / WCAG 2.1 AA）」原則設計，提供導盲磚快捷鍵、鍵盤完整導覽、高對比模式、字級縮放及純文字資料表替代檢視。</p>
-      <h3>快速鍵 (Accesskey) 設定說明</h3>
+      <p>本網站依循數位發展部「無障礙網頁開發規範 2.1 版（AA 等級 / WCAG 2.1 AA）」原則設計，提供跳至主要內容連結、語意地標、鍵盤完整導覽、高對比模式、字級縮放及純文字資料表替代檢視。</p>
+      <h3>區域導覽與快速鍵 (Accesskey) 說明</h3>
       <table class="detail-table">
         <thead>
           <tr>
-            <th scope="col">快速鍵</th>
+            <th scope="col">導覽區</th>
             <th scope="col">功能區塊說明</th>
           </tr>
         </thead>
         <tbody>
-          <tr><th scope="row">Alt + U</th><td>上方功能導覽區（含字級切換、高對比、表格檢視、座標系統與工具列）</td></tr>
-          <tr><th scope="row">Alt + L</th><td>左側查詢與圖層控制面板（控制點查詢、底圖切換、統計總覽）</td></tr>
-          <tr><th scope="row">Alt + C</th><td>中央主要內容區（互動式電子地圖或無障礙控制點資料表）</td></tr>
-          <tr><th scope="row">Alt + Z</th><td>下方即時座標狀態列與屏東縣政府地政處聯絡資訊區</td></tr>
+          <tr><th scope="row">U（上方）</th><td>上方功能導覽區（含字級切換、高對比、表格檢視、座標系統與工具列）</td></tr>
+          <tr><th scope="row">L（左側）</th><td>左側查詢與圖層控制面板（控制點查詢、底圖切換、統計總覽）</td></tr>
+          <tr><th scope="row">C（中央）</th><td>中央主要內容區（互動式電子地圖或無障礙控制點資料表）</td></tr>
+          <tr><th scope="row">Z（下方）</th><td>下方即時座標狀態列與屏東縣政府地政處聯絡資訊區</td></tr>
         </tbody>
       </table>
-      <p class="help-text">※ macOS 作業系統請使用 <code>Control + Option + 快速鍵</code>；Firefox 瀏覽器請使用 <code>Alt + Shift + 快速鍵</code>。</p>
+      <p class="help-text">※ 若瀏覽器或螢幕報讀器之快速鍵與 <code>accesskey</code> 衝突，建議優先使用頁面頂端「跳到主要內容區塊」連結或 ARIA 語意地標（<code>banner</code> / <code>navigation</code> / <code>complementary</code> / <code>main</code> / <code>contentinfo</code>）進行導覽。</p>
       <h3>螢幕報讀器與鍵盤操作建議</h3>
       <ul>
         <li>點擊頂部「<strong>表格檢視</strong>」按鈕可切換為標準語意化資料表，完整瀏覽並檢視各點位之「點之記」與複製座標。</li>
@@ -520,27 +520,30 @@
     </div>
   </dialog>
 
-  <!-- Dialog: ISO 27001 Security, Privacy & Audit Log -->
+  <!-- Dialog: Security & Client-Side Operation Log -->
   <dialog id="dialog-security" class="gis-dialog" aria-labelledby="security-dialog-title">
     <div class="dialog-header">
-      <h2 id="security-dialog-title">ISO/IEC 27001 資訊安全防護與作業稽核紀錄</h2>
-      <button class="icon-btn" type="button" data-close-dialog="dialog-security" aria-label="關閉資安與稽核視窗">✕</button>
+      <h2 id="security-dialog-title">資安防護設計與前端操作記錄（示意）</h2>
+      <button class="icon-btn" type="button" data-close-dialog="dialog-security" aria-label="關閉資安說明視窗">✕</button>
     </div>
     <div class="dialog-body source-docs">
-      <h3>一、ISO/IEC 27001 資安控制措施落實項目</h3>
+      <h3>一、本系統已實作之前端與 HTTP 資安防護項目</h3>
       <ul>
-        <li><strong>傳輸安全 (A.8.24)</strong>：全站強制 HTTPS 並啟用 HSTS（<code>max-age=31536000; includeSubDomains; preload</code>），所有外部底圖均走 HTTPS 加密連線。</li>
-        <li><strong>應用程式安全與標頭防護 (A.8.28)</strong>：配置嚴格 <code>Content-Security-Policy</code>、<code>X-Frame-Options: DENY</code>（防點擊劫持）、<code>X-Content-Type-Options: nosniff</code>、<code>Referrer-Policy</code> 與最小化 <code>Permissions-Policy</code>。</li>
-        <li><strong>供應鏈與第三方資源完整性 (A.8.30)</strong>：所有外部函式庫（Leaflet、Proj4js）均啟用 Subresource Integrity (SRI) 雜湊驗證，並移除第三方字型與追蹤腳本。</li>
-        <li><strong>輸入驗證與防注入攻擊</strong>：匯入檔案採本機解析（不上傳雲端）、強制 5 MB 容量上限、副檔名白名單與座標值域檢查；匯出 CSV 內建防範公式注入（CSV Injection）跳脫機制；所有動態內容均進行 HTML 編碼防禦 XSS。</li>
-        <li><strong>隱私權保護</strong>：本系統不設置追蹤型 Cookie、不蒐集個人識別資訊（PII），顯示偏好僅暫存於本機工作階段。</li>
+        <li><strong>傳輸與標頭防護</strong>：全站 HTTPS 並設定 HSTS（<code>max-age=31536000; includeSubDomains</code>）、嚴格 <code>Content-Security-Policy</code>（不含 <code>'unsafe-inline'</code>）、<code>X-Frame-Options: DENY</code>、<code>X-Content-Type-Options: nosniff</code>、<code>Referrer-Policy</code> 與最小化 <code>Permissions-Policy</code>（停用定位、相機、麥克風與 USB）。</li>
+        <li><strong>部署隔離</strong>：僅發布 <code>public/</code> 目錄內靜態檔案，避免 <code>netlify.toml</code> 等設定檔對外暴露。</li>
+        <li><strong>第三方資源完整性驗證 (SRI)</strong>：Leaflet 與 Proj4js 皆啟用 SRI 雜湊驗證並移除第三方字型追蹤。</li>
+        <li><strong>輸入驗證、XSS 與 CSV 注入防禦</strong>：匯入檔案採本機解析，強制副檔名白名單、5 MB 上限、10,000 筆上限與座標值域驗證；所有動態點位內容皆以 DOM <code>textContent</code> 建立（不使用 <code>innerHTML</code>）；匯出 CSV 內建防範公式注入跳脫。</li>
+        <li><strong>隱私權保護</strong>：無追蹤型 Cookie，不蒐集個人識別資訊（PII）。</li>
       </ul>
 
-      <h3>二、本次工作階段作業稽核紀錄 (ISO 27001 A.8.15)</h3>
-      <div id="audit-log-list" class="audit-log-box mono" tabindex="0" aria-label="本次作業稽核紀錄清單"></div>
+      <h3>二、前端操作記錄（本機工作階段示意）</h3>
+      <p class="notice-box">
+        <strong>合規範圍說明：</strong>以下操作記錄僅暫存於瀏覽器記憶體中，重新整理即清除，<strong>非</strong>正式之 ISO/IEC 27001 A.8.15 稽核日誌。正式導入機關環境時，應由後端系統集中收集日誌並落實完整性保護與法定保留期限。
+      </p>
+      <div id="audit-log-list" class="audit-log-box mono" tabindex="0" aria-label="前端操作記錄示意清單"></div>
     </div>
     <div class="dialog-footer">
-      <button id="btn-export-audit" type="button" class="btn-secondary">匯出稽核日誌 (.txt)</button>
+      <button id="btn-export-audit" type="button" class="btn-secondary">匯出操作記錄 (.txt)</button>
       <button type="button" class="btn-primary" data-close-dialog="dialog-security">關閉</button>
     </div>
   </dialog>

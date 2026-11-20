@@ -13,7 +13,7 @@ const ORDER_META = {
   4: { label: '四等／圖根點', color: '#047857', shape: 'circle', symbol: '●' }
 };
 
-// ISO 27001 檔案匯入安全上限
+// 前端匯入安全限制
 const SECURITY_LIMITS = {
   MAX_FILE_BYTES: 5 * 1024 * 1024, // 5 MB
   MAX_IMPORT_ROWS: 10000,
@@ -37,15 +37,29 @@ const state = {
   measurePoints: [],
   tableMode: false,
   lastFocusedElement: null,
-  auditLogs: []
+  operationLogs: []
 };
 
-// ISO 27001 A.8.15 作業安全稽核日誌（僅存於本機記憶體工作階段，不寫入敏感個資）
-function addAuditLog(action, detail) {
+// 安全 DOM 輔助函式（全面避免使用 innerHTML）
+function createEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined && text !== null) el.textContent = String(text);
+  return el;
+}
+
+function clearEl(el) {
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+}
+
+// 前端操作記錄（僅供本機工作階段示意，非伺服器端 ISO 27001 A.8.15 稽核日誌）
+function addOperationLog(action, detail) {
   const ts = new Date().toISOString();
   const entry = `[${ts}] [${action}] ${detail}`;
-  state.auditLogs.push(entry);
-  if (state.auditLogs.length > 200) state.auditLogs.shift();
+  state.operationLogs.push(entry);
+  if (state.operationLogs.length > 200) state.operationLogs.shift();
 }
 
 // 無障礙：螢幕報讀器即時播報
@@ -117,16 +131,7 @@ const bufferLayer = L.layerGroup().addTo(map);
 const measureLayer = L.layerGroup().addTo(map);
 
 // 4. 安全與座標工具函式
-function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-// ISO 27001 / OWASP 防範 CSV 公式注入 (Formula Injection)
+// 防範 CSV 公式注入 (CSV / Formula Injection)
 function sanitizeCsvCell(value) {
   let str = String(value ?? '');
   if (/^[=+\-@\t\r]/.test(str)) {
@@ -173,25 +178,48 @@ function formatCoordPair(lon, lat, crs = state.currentCrs) {
   return `${y.toFixed(6)}°, ${x.toFixed(6)}°`;
 }
 
+// 使用 DOM/SVG 元素建立標記（無 inline style 屬性，無使用者字串拼接）
 function createOrderIcon(order, status) {
   const meta = ORDER_META[order] || ORDER_META[4];
-  const opacity = status === '遺失' ? 0.6 : 1;
+  const opacity = status === '遺失' ? '0.6' : '1';
   const stroke = status === '遺失' ? '#0f172a' : '#ffffff';
-  let svgShape = '';
+  const svgNS = 'http://www.w3.org/2000/svg';
 
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('width', '24');
+  svg.setAttribute('height', '24');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('opacity', opacity);
+
+  let shapeEl;
   if (meta.shape === 'triangle') {
-    svgShape = `<polygon points="12,2 22,20 2,20" fill="${meta.color}" stroke="${stroke}" stroke-width="2"/>`;
+    shapeEl = document.createElementNS(svgNS, 'polygon');
+    shapeEl.setAttribute('points', '12,2 22,20 2,20');
   } else if (meta.shape === 'diamond') {
-    svgShape = `<polygon points="12,2 22,12 12,22 2,12" fill="${meta.color}" stroke="${stroke}" stroke-width="2"/>`;
+    shapeEl = document.createElementNS(svgNS, 'polygon');
+    shapeEl.setAttribute('points', '12,2 22,12 12,22 2,12');
   } else if (meta.shape === 'square') {
-    svgShape = `<rect x="4" y="4" width="16" height="16" rx="2" fill="${meta.color}" stroke="${stroke}" stroke-width="2"/>`;
+    shapeEl = document.createElementNS(svgNS, 'rect');
+    shapeEl.setAttribute('x', '4');
+    shapeEl.setAttribute('y', '4');
+    shapeEl.setAttribute('width', '16');
+    shapeEl.setAttribute('height', '16');
+    shapeEl.setAttribute('rx', '2');
   } else {
-    svgShape = `<circle cx="12" cy="12" r="8" fill="${meta.color}" stroke="${stroke}" stroke-width="2"/>`;
+    shapeEl = document.createElementNS(svgNS, 'circle');
+    shapeEl.setAttribute('cx', '12');
+    shapeEl.setAttribute('cy', '12');
+    shapeEl.setAttribute('r', '8');
   }
+  shapeEl.setAttribute('fill', meta.color);
+  shapeEl.setAttribute('stroke', stroke);
+  shapeEl.setAttribute('stroke-width', '2');
+  svg.appendChild(shapeEl);
 
   return L.divIcon({
     className: 'custom-cp-icon',
-    html: `<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" style="opacity:${opacity}">${svgShape}</svg>`,
+    html: svg,
     iconSize: [24, 24],
     iconAnchor: [12, 12]
   });
@@ -208,7 +236,8 @@ function renderTownshipMarkers() {
       fillColor: '#ffffff',
       fillOpacity: 0.95
     });
-    marker.bindTooltip(escapeHtml(tw.name), {
+    const tipEl = createEl('span', '', tw.name);
+    marker.bindTooltip(tipEl, {
       permanent: true,
       direction: 'top',
       offset: [0, -4],
@@ -283,7 +312,8 @@ function renderMapPoints() {
     });
 
     if (state.showLabels) {
-      marker.bindTooltip(escapeHtml(pt.id), {
+      const labelEl = createEl('span', '', pt.id);
+      marker.bindTooltip(labelEl, {
         permanent: false,
         direction: 'right',
         offset: [10, 0],
@@ -296,33 +326,40 @@ function renderMapPoints() {
   });
 }
 
-// 無障礙：使用原生 <button> 卡片，確保鍵盤 Tab / Enter / Space 完整操作
+// 無障礙 + 防 XSS：全數使用 DOM createElement + textContent，不使用 innerHTML
 function renderPointList() {
   const container = document.getElementById('point-list');
+  clearEl(container);
+
   if (state.filteredPoints.length === 0) {
-    container.innerHTML = '<div class="notice-box notice-spaced" role="status">查無符合條件的控制點，請放寬篩選條件或調整環域半徑。</div>';
+    const emptyBox = createEl('div', 'notice-box notice-spaced', '查無符合條件的控制點，請放寬篩選條件或調整環域半徑。');
+    emptyBox.setAttribute('role', 'status');
+    container.appendChild(emptyBox);
     return;
   }
 
   const fragment = document.createDocumentFragment();
   state.filteredPoints.slice(0, 200).forEach((pt) => {
-    const card = document.createElement('button');
+    const orderNum = [1, 2, 3, 4].includes(Number(pt.order)) ? Number(pt.order) : 4;
+    const orderInfo = ORDER_META[orderNum];
+
+    const card = createEl('button', `point-card order-${orderNum}`);
     card.type = 'button';
-    card.className = `point-card order-${pt.order}`;
-    const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
     card.setAttribute('aria-label', `${pt.id} ${pt.name}，${orderInfo.label}，${pt.township}${pt.section}，狀態${pt.status}，檢視點之記`);
 
-    card.innerHTML = `
-      <div class="point-card-top">
-        <span class="point-title">${escapeHtml(orderInfo.symbol)} ${escapeHtml(pt.id)} · ${escapeHtml(pt.name)}</span>
-        <span class="order-badge order-${pt.order}">${escapeHtml(orderInfo.label)}</span>
-      </div>
-      <div class="point-meta">
-        <span>${escapeHtml(pt.township)}（${escapeHtml(pt.section)}）</span>
-        <span>高程 ${Number(pt.h).toFixed(2)} m · ${escapeHtml(pt.status)}</span>
-      </div>
-      <div class="point-coords mono">${escapeHtml(formatCoordPair(pt.lon, pt.lat))}</div>
-    `;
+    const topRow = createEl('div', 'point-card-top');
+    topRow.appendChild(createEl('span', 'point-title', `${orderInfo.symbol} ${pt.id} · ${pt.name}`));
+    topRow.appendChild(createEl('span', `order-badge order-${orderNum}`, orderInfo.label));
+
+    const metaRow = createEl('div', 'point-meta');
+    metaRow.appendChild(createEl('span', '', `${pt.township}（${pt.section}）`));
+    metaRow.appendChild(createEl('span', '', `高程 ${Number(pt.h).toFixed(2)} m · ${pt.status}`));
+
+    const coordsRow = createEl('div', 'point-coords mono', formatCoordPair(pt.lon, pt.lat));
+
+    card.appendChild(topRow);
+    card.appendChild(metaRow);
+    card.appendChild(coordsRow);
 
     card.addEventListener('click', () => {
       if (!state.tableMode) {
@@ -333,44 +370,59 @@ function renderPointList() {
     fragment.appendChild(card);
   });
 
-  container.innerHTML = '';
   container.appendChild(fragment);
 }
 
-// 無障礙：標準語意化資料表替代檢視
+// 無障礙：標準語意化資料表替代檢視（純 DOM textContent）
 function renderAccessibleTable() {
   const tbody = document.getElementById('a11y-table-body');
   const thCoords = document.getElementById('th-coords');
   if (thCoords) thCoords.textContent = `座標 (${state.currentCrs})`;
   if (!tbody) return;
+  clearEl(tbody);
 
   if (state.filteredPoints.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="9">查無符合條件的控制點資料。</td></tr>';
+    const tr = createEl('tr');
+    const td = createEl('td', '', '查無符合條件的控制點資料。');
+    td.colSpan = 9;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
     return;
   }
 
   const fragment = document.createDocumentFragment();
   state.filteredPoints.slice(0, 500).forEach((pt) => {
-    const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <th scope="row" class="mono">${escapeHtml(pt.id)}</th>
-      <td>${escapeHtml(pt.name)}</td>
-      <td><span class="order-badge order-${pt.order}">${escapeHtml(orderInfo.symbol)} ${escapeHtml(orderInfo.label)}</span></td>
-      <td>${escapeHtml(pt.township)}・${escapeHtml(pt.section)}</td>
-      <td>${escapeHtml(pt.office)}</td>
-      <td class="mono">${escapeHtml(formatCoordPair(pt.lon, pt.lat))}</td>
-      <td class="mono">${Number(pt.h).toFixed(2)}</td>
-      <td>${escapeHtml(pt.status)}</td>
-      <td><button type="button" class="btn-table-action">檢視點之記</button></td>
-    `;
-    const btn = tr.querySelector('.btn-table-action');
+    const orderNum = [1, 2, 3, 4].includes(Number(pt.order)) ? Number(pt.order) : 4;
+    const orderInfo = ORDER_META[orderNum];
+
+    const tr = createEl('tr');
+    const thId = createEl('th', 'mono', pt.id);
+    thId.scope = 'row';
+    tr.appendChild(thId);
+
+    tr.appendChild(createEl('td', '', pt.name));
+
+    const tdOrder = createEl('td');
+    tdOrder.appendChild(createEl('span', `order-badge order-${orderNum}`, `${orderInfo.symbol} ${orderInfo.label}`));
+    tr.appendChild(tdOrder);
+
+    tr.appendChild(createEl('td', '', `${pt.township}・${pt.section}`));
+    tr.appendChild(createEl('td', '', pt.office));
+    tr.appendChild(createEl('td', 'mono', formatCoordPair(pt.lon, pt.lat)));
+    tr.appendChild(createEl('td', 'mono', Number(pt.h).toFixed(2)));
+    tr.appendChild(createEl('td', '', pt.status));
+
+    const tdAction = createEl('td');
+    const btn = createEl('button', 'btn-table-action', '檢視點之記');
+    btn.type = 'button';
     btn.setAttribute('aria-label', `檢視 ${pt.id} ${pt.name} 之點之記詳細資訊`);
     btn.addEventListener('click', () => openPointDetail(pt, btn));
+    tdAction.appendChild(btn);
+    tr.appendChild(tdAction);
+
     fragment.appendChild(tr);
   });
 
-  tbody.innerHTML = '';
   tbody.appendChild(fragment);
 }
 
@@ -407,26 +459,47 @@ function renderStats() {
     byOffice[p.office] = (byOffice[p.office] || 0) + 1;
   });
 
-  document.getElementById('stats-cards').innerHTML = `
-    <div class="stat-box"><strong>${total}</strong><span>全縣控制點總數</span></div>
-    <div class="stat-box"><strong>${normalCount}</strong><span>正常可用點位</span></div>
-    <div class="stat-box"><strong class="text-order-1">${byOrder[1]}</strong><span>一等控制點</span></div>
-    <div class="stat-box"><strong class="text-order-2">${byOrder[2]}</strong><span>二等控制點</span></div>
-    <div class="stat-box"><strong class="text-order-3">${byOrder[3]}</strong><span>三等控制點</span></div>
-    <div class="stat-box"><strong class="text-order-4">${byOrder[4]}</strong><span>四等／圖根點</span></div>
-  `;
+  const statsCards = document.getElementById('stats-cards');
+  clearEl(statsCards);
+  const items = [
+    { val: total, label: '全縣控制點總數', cls: '' },
+    { val: normalCount, label: '正常可用點位', cls: '' },
+    { val: byOrder[1], label: '一等控制點', cls: 'text-order-1' },
+    { val: byOrder[2], label: '二等控制點', cls: 'text-order-2' },
+    { val: byOrder[3], label: '三等控制點', cls: 'text-order-3' },
+    { val: byOrder[4], label: '四等／圖根點', cls: 'text-order-4' }
+  ];
+  items.forEach((it) => {
+    const box = createEl('div', 'stat-box');
+    box.appendChild(createEl('strong', it.cls, it.val));
+    box.appendChild(createEl('span', '', it.label));
+    statsCards.appendChild(box);
+  });
 
   const maxOffice = Math.max(1, ...Object.values(byOffice));
-  document.getElementById('office-stats').innerHTML = Object.entries(byOffice)
-    .map(([office, count]) => `
-      <div class="office-bar-row">
-        <div class="office-bar-label"><span>${escapeHtml(office)}</span><strong class="mono">${count}</strong></div>
-        <div class="office-bar-track" role="progressbar" aria-label="${escapeHtml(office)}控制點數" aria-valuenow="${count}" aria-valuemin="0" aria-valuemax="${maxOffice}">
-          <div class="office-bar-fill" style="width:${(count / maxOffice) * 100}%"></div>
-        </div>
-      </div>
-    `)
-    .join('');
+  const officeContainer = document.getElementById('office-stats');
+  clearEl(officeContainer);
+  Object.entries(byOffice).forEach(([office, count]) => {
+    const row = createEl('div', 'office-bar-row');
+    const lbl = createEl('div', 'office-bar-label');
+    lbl.appendChild(createEl('span', '', office));
+    lbl.appendChild(createEl('strong', 'mono', count));
+
+    const track = createEl('div', 'office-bar-track');
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-label', `${office}控制點數`);
+    track.setAttribute('aria-valuenow', String(count));
+    track.setAttribute('aria-valuemin', '0');
+    track.setAttribute('aria-valuemax', String(maxOffice));
+
+    const fill = createEl('div', 'office-bar-fill');
+    fill.style.width = `${(count / maxOffice) * 100}%`;
+    track.appendChild(fill);
+
+    row.appendChild(lbl);
+    row.appendChild(track);
+    officeContainer.appendChild(row);
+  });
 }
 
 // 7. 彈出視窗開啟／關閉與無障礙焦點還原
@@ -445,35 +518,54 @@ function closeDialog(dialogId) {
   }
 }
 
+function appendDetailRow(tbody, label, primaryText, secondaryText, isMono) {
+  const tr = createEl('tr');
+  const th = createEl('th', '', label);
+  th.scope = 'row';
+  const td = createEl('td', isMono ? 'mono' : '');
+  td.appendChild(document.createTextNode(String(primaryText ?? '')));
+  if (secondaryText) {
+    td.appendChild(document.createElement('br'));
+    td.appendChild(createEl('small', '', secondaryText));
+  }
+  tr.appendChild(th);
+  tr.appendChild(td);
+  tbody.appendChild(tr);
+}
+
 function openPointDetail(pt, triggerEl) {
   state.activePoint = pt;
-  const orderInfo = ORDER_META[pt.order] || ORDER_META[4];
+  const orderNum = [1, 2, 3, 4].includes(Number(pt.order)) ? Number(pt.order) : 4;
+  const orderInfo = ORDER_META[orderNum];
   const twd97 = convertFromWgs84(pt.lon, pt.lat, 'EPSG:3824');
   const tm2 = convertFromWgs84(pt.lon, pt.lat, 'EPSG:3826');
 
   const badge = document.getElementById('detail-order-badge');
-  badge.className = `order-badge order-${pt.order}`;
+  badge.className = `order-badge order-${orderNum}`;
   badge.textContent = `${orderInfo.symbol} ${orderInfo.label}`;
 
   document.getElementById('detail-title').textContent = `${pt.id} — ${pt.name}`;
-  document.getElementById('detail-body').innerHTML = `
-    <table class="detail-table">
-      <tbody>
-        <tr><th scope="row">行政轄區</th><td>${escapeHtml(pt.township)}・${escapeHtml(pt.section)}</td></tr>
-        <tr><th scope="row">地政事務所</th><td>${escapeHtml(pt.office)}</td></tr>
-        <tr><th scope="row">管理機關</th><td>${escapeHtml(pt.authority)}</td></tr>
-        <tr><th scope="row">點位狀態</th><td><strong>${escapeHtml(pt.status)}</strong>（標石類型：${escapeHtml(pt.monument)}）</td></tr>
-        <tr><th scope="row">TWD97 (EPSG:3824)</th><td class="mono">${twd97.y.toFixed(6)}°, ${twd97.x.toFixed(6)}°<br><small>${toDMS(twd97.y, true)} / ${toDMS(twd97.x, false)}</small></td></tr>
-        <tr><th scope="row">WGS84 (EPSG:4326)</th><td class="mono">${pt.lat.toFixed(6)}°, ${pt.lon.toFixed(6)}°<br><small>${toDMS(pt.lat, true)} / ${toDMS(pt.lon, false)}</small></td></tr>
-        <tr><th scope="row">TWD97 TM2 (3826)</th><td class="mono">E: ${tm2.x.toFixed(3)} m, N: ${tm2.y.toFixed(3)} m</td></tr>
-        <tr><th scope="row">正高 (H)</th><td class="mono">${Number(pt.h).toFixed(3)} m (TWVD2001)</td></tr>
-        <tr><th scope="row">埋設／檢測日期</th><td>${escapeHtml(pt.installDate)}</td></tr>
-        <tr><th scope="row">點之記備註</th><td>${escapeHtml(pt.note)}</td></tr>
-      </tbody>
-    </table>
-  `;
 
-  addAuditLog('VIEW_POINT', `檢視控制點 ${pt.id} (${pt.township})`);
+  const body = document.getElementById('detail-body');
+  clearEl(body);
+  const table = createEl('table', 'detail-table');
+  const tbody = createEl('tbody');
+
+  appendDetailRow(tbody, '行政轄區', `${pt.township}・${pt.section}`, '', false);
+  appendDetailRow(tbody, '地政事務所', pt.office, '', false);
+  appendDetailRow(tbody, '管理機關', pt.authority, '', false);
+  appendDetailRow(tbody, '點位狀態', `${pt.status}（標石類型：${pt.monument}）`, '', false);
+  appendDetailRow(tbody, 'TWD97 (EPSG:3824)', `${twd97.y.toFixed(6)}°, ${twd97.x.toFixed(6)}°`, `${toDMS(twd97.y, true)} / ${toDMS(twd97.x, false)}`, true);
+  appendDetailRow(tbody, 'WGS84 (EPSG:4326)', `${pt.lat.toFixed(6)}°, ${pt.lon.toFixed(6)}°`, `${toDMS(pt.lat, true)} / ${toDMS(pt.lon, false)}`, true);
+  appendDetailRow(tbody, 'TWD97 TM2 (3826)', `E: ${tm2.x.toFixed(3)} m, N: ${tm2.y.toFixed(3)} m`, '', true);
+  appendDetailRow(tbody, '正高 (H)', `${Number(pt.h).toFixed(3)} m (TWVD2001)`, '', true);
+  appendDetailRow(tbody, '埋設／檢測日期', pt.installDate, '', false);
+  appendDetailRow(tbody, '點之記備註', pt.note, '', false);
+
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  addOperationLog('VIEW_POINT', `檢視控制點 ${pt.id} (${pt.township})`);
   openDialog('dialog-detail', triggerEl);
 }
 
@@ -550,17 +642,17 @@ function handleImportFile(file) {
   const sourceCrs = document.getElementById('import-crs').value;
   const mode = document.getElementById('import-mode').value;
 
-  // ISO 27001 輸入安全檢查：副檔名白名單與檔案大小上限
+  // 輸入安全檢查：副檔名白名單與檔案大小上限
   const lowerName = file.name.toLowerCase();
   const hasAllowedExt = SECURITY_LIMITS.ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
   if (!hasAllowedExt) {
     statusEl.textContent = '安全阻擋：僅允許匯入 .csv、.geojson 或 .json 格式檔案。';
-    addAuditLog('IMPORT_REJECTED', `不允許的檔案格式：${file.name}`);
+    addOperationLog('IMPORT_REJECTED', `不允許的檔案格式：${file.name}`);
     return;
   }
   if (file.size > SECURITY_LIMITS.MAX_FILE_BYTES) {
     statusEl.textContent = '安全阻擋：檔案大小超過 5 MB 上限，請分批匯入。';
-    addAuditLog('IMPORT_REJECTED', `檔案過大 (${file.size} bytes)`);
+    addOperationLog('IMPORT_REJECTED', `檔案過大 (${file.size} bytes)`);
     return;
   }
 
@@ -647,12 +739,12 @@ function handleImportFile(file) {
       state.points = mode === 'replace' ? imported : [...state.points, ...imported];
       document.getElementById('data-source-badge').textContent = `已載入本機圖資（共 ${state.points.length} 點）`;
       statusEl.textContent = `安全驗證通過，成功於本機匯入 ${imported.length} 筆控制點！`;
-      addAuditLog('IMPORT_OK', `本機匯入 ${imported.length} 筆 (${sourceCrs}, 模式: ${mode})`);
+      addOperationLog('IMPORT_OK', `本機匯入 ${imported.length} 筆 (${sourceCrs}, 模式: ${mode})`);
       applyFilters();
       flyToSafe([imported[0].lat, imported[0].lon], 13);
     } catch (err) {
       statusEl.textContent = `匯入失敗：${err.message}`;
-      addAuditLog('IMPORT_ERROR', err.message);
+      addOperationLog('IMPORT_ERROR', err.message);
     }
   };
   reader.readAsText(file, 'utf-8');
@@ -678,17 +770,17 @@ function exportFilteredCsv() {
   a.download = `pingtung_control_points_${crs.replace(':', '_')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  addAuditLog('EXPORT_CSV', `匯出 ${state.filteredPoints.length} 筆控制點 (${crs})`);
+  addOperationLog('EXPORT_CSV', `匯出 ${state.filteredPoints.length} 筆控制點 (${crs})`);
   announce(`已匯出 ${state.filteredPoints.length} 筆控制點 CSV 檔案`);
 }
 
-function exportAuditLogFile() {
-  const content = state.auditLogs.join('\n') + '\n';
+function exportOperationLogFile() {
+  const content = state.operationLogs.join('\n') + '\n';
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `pingtung_gis_audit_log_${new Date().toISOString().slice(0, 10)}.txt`;
+  a.download = `pingtung_gis_session_log_${new Date().toISOString().slice(0, 10)}.txt`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -696,11 +788,20 @@ function exportAuditLogFile() {
 // 10. UI 綁定與無障礙互動初始化
 function populateTownshipSelect() {
   const sel = document.getElementById('township-select');
+  clearEl(sel);
+  const allOpt = createEl('option', '', '全部鄉鎮市');
+  allOpt.value = 'all';
+  sel.appendChild(allOpt);
+
   const list = state.selectedOffice === 'all'
     ? TOWNSHIPS.map((t) => t.name)
     : (PINGTUNG_OFFICES[state.selectedOffice] || []);
-  sel.innerHTML = '<option value="all">全部鄉鎮市</option>' +
-    list.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+
+  list.forEach((name) => {
+    const opt = createEl('option', '', name);
+    opt.value = name;
+    sel.appendChild(opt);
+  });
 }
 
 function updateLocateLabels() {
@@ -735,6 +836,8 @@ function updateLocatePreview() {
   const x = parseFloat(document.getElementById('locate-x').value);
   const y = parseFloat(document.getElementById('locate-y').value);
   const preview = document.getElementById('locate-converted');
+  clearEl(preview);
+
   if (Number.isNaN(x) || Number.isNaN(y)) {
     preview.textContent = '請輸入有效數值';
     return;
@@ -747,11 +850,9 @@ function updateLocatePreview() {
     }
     const c3824 = convertFromWgs84(lon, lat, 'EPSG:3824');
     const c3826 = convertFromWgs84(lon, lat, 'EPSG:3826');
-    preview.innerHTML = `
-      TWD97 (EPSG:3824): ${c3824.y.toFixed(6)}°, ${c3824.x.toFixed(6)}°<br>
-      WGS84 (EPSG:4326): ${lat.toFixed(6)}°, ${lon.toFixed(6)}°<br>
-      TWD97 TM2 (3826): E ${c3826.x.toFixed(3)} m, N ${c3826.y.toFixed(3)} m
-    `;
+    preview.appendChild(createEl('div', '', `TWD97 (EPSG:3824): ${c3824.y.toFixed(6)}°, ${c3824.x.toFixed(6)}°`));
+    preview.appendChild(createEl('div', '', `WGS84 (EPSG:4326): ${lat.toFixed(6)}°, ${lon.toFixed(6)}°`));
+    preview.appendChild(createEl('div', '', `TWD97 TM2 (3826): E ${c3826.x.toFixed(3)} m, N ${c3826.y.toFixed(3)} m`));
   } catch {
     preview.textContent = '座標轉換失敗，請確認數值範圍';
   }
@@ -771,12 +872,11 @@ function toggleTableView(enable) {
   if (!enable) {
     window.setTimeout(() => map.invalidateSize(), 100);
   }
-  addAuditLog('VIEW_MODE', enable ? '切換至無障礙資料表檢視' : '切換至互動電子地圖');
+  addOperationLog('VIEW_MODE', enable ? '切換至無障礙資料表檢視' : '切換至互動電子地圖');
   announce(enable ? '已切換為無障礙控制點資料表檢視' : '已切換為互動電子地圖檢視');
 }
 
 function initAccessibilityControls() {
-  // 字級切換
   document.querySelectorAll('[data-font-size]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const size = btn.dataset.fontSize;
@@ -789,7 +889,6 @@ function initAccessibilityControls() {
     });
   });
 
-  // 高對比模式
   const hcBtn = document.getElementById('btn-high-contrast');
   hcBtn.addEventListener('click', () => {
     const isHC = document.documentElement.classList.toggle('high-contrast');
@@ -797,7 +896,6 @@ function initAccessibilityControls() {
     announce(isHC ? '已啟用高對比模式' : '已關閉高對比模式');
   });
 
-  // 地圖 / 無障礙資料表切換
   document.getElementById('btn-view-mode').addEventListener('click', () => {
     toggleTableView(!state.tableMode);
   });
@@ -805,7 +903,6 @@ function initAccessibilityControls() {
     toggleTableView(false);
   });
 
-  // Dialog 關閉時自動還原焦點
   document.querySelectorAll('dialog.gis-dialog').forEach((dlg) => {
     dlg.addEventListener('close', () => {
       if (state.lastFocusedElement && typeof state.lastFocusedElement.focus === 'function') {
@@ -818,7 +915,6 @@ function initAccessibilityControls() {
 function initEventListeners() {
   initAccessibilityControls();
 
-  // Sidebar toggle
   const sidebarToggle = document.getElementById('btn-toggle-sidebar');
   sidebarToggle.addEventListener('click', () => {
     const sidebar = document.getElementById('sidebar');
@@ -854,17 +950,15 @@ function initEventListeners() {
     });
   });
 
-  // CRS Switcher
   document.getElementById('crs-select').addEventListener('change', (e) => {
     state.currentCrs = e.target.value;
     document.getElementById('status-crs-badge').textContent = state.currentCrs;
     renderPointList();
     renderAccessibleTable();
-    addAuditLog('CRS_CHANGE', `切換座標系統至 ${state.currentCrs}`);
+    addOperationLog('CRS_CHANGE', `切換座標系統至 ${state.currentCrs}`);
     announce(`座標系統已切換為 ${state.currentCrs}`);
   });
 
-  // Filters
   document.getElementById('search-input').addEventListener('input', (e) => {
     state.searchQuery = e.target.value;
     applyFilters();
@@ -930,13 +1024,12 @@ function initEventListeners() {
     applyFilters();
   });
 
-  // Basemaps & Overlays
   document.querySelectorAll('input[name="basemap"]').forEach((radio) => {
     radio.addEventListener('change', (e) => {
       map.removeLayer(currentBasemapLayer);
       currentBasemapLayer = basemaps[e.target.value].addTo(map);
       currentBasemapLayer.bringToBack();
-      addAuditLog('BASEMAP_CHANGE', `切換底圖至 ${e.target.value}`);
+      addOperationLog('BASEMAP_CHANGE', `切換底圖至 ${e.target.value}`);
     });
   });
 
@@ -955,7 +1048,6 @@ function initEventListeners() {
     renderMapPoints();
   });
 
-  // Map Events
   map.on('mousemove', (e) => {
     const { lat, lng } = e.latlng;
     document.getElementById('cursor-coords').textContent = formatCoordPair(lng, lat);
@@ -977,7 +1069,6 @@ function initEventListeners() {
     }
   });
 
-  // Toolbar Actions & Dialogs
   document.getElementById('btn-measure').addEventListener('click', () => {
     if (state.measureMode) stopMeasureMode();
     else startMeasureMode();
@@ -1008,7 +1099,7 @@ function initEventListeners() {
     closeDialog('dialog-locate');
     if (state.tableMode) toggleTableView(false);
     flyToSafe([lat, lon], 14);
-    addAuditLog('COORD_LOCATE', `定位查詢 (${crs}: ${x}, ${y})`);
+    addOperationLog('COORD_LOCATE', `定位查詢 (${crs}: ${x}, ${y})`);
     applyFilters();
   });
 
@@ -1026,7 +1117,7 @@ function initEventListeners() {
     state.points = [...INITIAL_CONTROL_POINTS];
     document.getElementById('data-source-badge').textContent = '示範資料＋支援官方匯入';
     document.getElementById('import-status').textContent = '已還原屏東縣全縣內建控制點資料。';
-    addAuditLog('RESET_DATA', '還原內建全縣控制點參考資料');
+    addOperationLog('RESET_DATA', '還原內建全縣控制點參考資料');
     applyFilters();
   });
 
@@ -1034,10 +1125,10 @@ function initEventListeners() {
   document.getElementById('btn-sources').addEventListener('click', (e) => openDialog('dialog-sources', e.currentTarget));
   document.getElementById('btn-a11y-help').addEventListener('click', (e) => openDialog('dialog-a11y', e.currentTarget));
   document.getElementById('btn-security').addEventListener('click', (e) => {
-    document.getElementById('audit-log-list').textContent = state.auditLogs.join('\n');
+    document.getElementById('audit-log-list').textContent = state.operationLogs.join('\n');
     openDialog('dialog-security', e.currentTarget);
   });
-  document.getElementById('btn-export-audit').addEventListener('click', exportAuditLogFile);
+  document.getElementById('btn-export-audit').addEventListener('click', exportOperationLogFile);
 
   document.getElementById('btn-copy-coord').addEventListener('click', () => {
     if (!state.activePoint) return;
@@ -1062,7 +1153,7 @@ function initEventListeners() {
 }
 
 // 11. 啟動初始化
-addAuditLog('SYSTEM_INIT', '屏東縣政府地政處控制點 GIS 系統啟動（無障礙 AA + ISO 27001 防護模式）');
+addOperationLog('SYSTEM_INIT', '屏東縣政府地政處控制點 GIS 系統啟動');
 populateTownshipSelect();
 renderTownshipMarkers();
 initEventListeners();
